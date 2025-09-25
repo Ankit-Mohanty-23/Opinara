@@ -172,7 +172,7 @@ export async function deletePost(req, res) {
 
 /**
  * @desc    Handle Vote for a post
- * @route   POST post/:postId/vote
+ * @route   PATCH post/:postId/vote
  * @access  Public
  */
 
@@ -243,7 +243,7 @@ export async function toggleVote(req, res) {
 
 /**
  * @desc    Comments for a post
- * @route   POST post/:postId/comment/
+ * @route   PATCH post/:postId/comment/
  * @access  Public
  */
 

@@ -18,28 +18,23 @@ export async function signup(req, res) {
     }
     const existingUser = await Users.findOne({ email });
     if (existingUser) {
-      return res.status(200).json({
-        msg: "user already exits",
+      return res.status(409).json({
+        msg: "User already exits",
       });
     }
-    console.log("Creating new User..");
-    const newUser = new Users({
+    const newUser = await new Users({
       email,
       fullname,
       password,
-    });
-    await newUser.save();
-    res.status(200).json({
+    }).save();
+
+    res.status(201).json({
       msg: "New User Created",
+      newUser
     });
   } catch (error) {
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        error: error.message,
-      });
-    }
-    res.status(400).json({
-      msg: "Server error: Error in Signup API:",
+    res.status(500).json({
+      msg: "Signup Failed",
       error: error.message,
     });
   }
@@ -56,115 +51,75 @@ export async function login(req, res) {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({
+        success: false,
         msg: "Please provide email and password correctly",
       });
     }
     const user = await Users.findOne({ email }).select("+password");
     if (!user) {
       return res.status(401).json({
-        status: "fail",
+        success: false,
         msg: "Invalid credentials",
       });
     }
 
-    if (!user.password) {
-      return res.status(401).json({
-        status: "fail",
-        msg: "User password not found",
-      });
-    }
-
-    // Ensure both password and stored password are strings
-    let passwordToCompare = password;
-    if (typeof password !== "string") {
-      console.log("Password is not a string, converting...");
-      passwordToCompare = String(password);
-    }
-
-    if (typeof user.password !== "string") {
-      console.log("Stored password is not a string, converting...");
-      user.password = String(user.password);
-    }
-
-    const isPasswordValid = await user.comparePassword(passwordToCompare);
+    // Always cast password to string before comparing
+    const isPasswordValid = await user.comparePassword(String(password));
     if (!isPasswordValid) {
       return res.status(401).json({
-        status: "fail",
+        success: false,
         msg: "Invalid credentials",
       });
     }
 
-    const payload = { id: user._id };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: "30d",
-    });
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
+    );
+
     res.status(200).json({
-      status: "success",
+      success: true,
       token,
     });
+
   } catch (error) {
-    console.log("Error: ", error);
     res.status(500).json({
-      msg: "Server error: Error in Login API",
+      success: false,
+      msg: "Login Failed",
       error: error.message,
     });
   }
 }
 
 /**
- * @desc    Get user Id
- * @route   POST /user
- * @access  Public
- */
-
-export async function getUserId(req, res) {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      res.status(400).json({
-        msg: "Email not given",
-      });
-    }
-    const userId = await Users.findOne({ email });
-    if (!userId) {
-      res.status(400).json({
-        msg: "User not found",
-      });
-    }
-    res.status(200).json({
-      id: userId._id,
-    });
-  } catch (error) {
-    res.status(500).json({
-      msg: "Server error: Error in getUserId API",
-      error: error,
-    });
-  }
-}
-
-/**
  * @desc    Get user details
- * @route   GET /user/:id
+ * @route   GET /user/data
  * @access  Public
  */
 
 export async function getUser(req, res) {
   try {
-    const userId = req.params.id;
+    const userId = req.user?._id;
+
     if (!userId) {
       res.status(400).json({
         msg: "Id not found",
       });
     }
+
     const UserData = await Users.findOne({ _id: userId });
+
     if (!UserData) {
       res.status(400).json({
         msg: "User Data not found",
       });
     }
+
     res.status(200).json({
       data: UserData,
     });
+
   } catch (error) {
     return res.status(500).json({
       msg: "Server error: Error in getUser API",
@@ -181,14 +136,17 @@ export async function getUser(req, res) {
 export async function SendOtp(req, res) {
   try {
     const { email, fullname } = req.body;
+    
     if (!email || !fullname) {
       res.status(400).json({
         msg: "Please provide email and name correctly",
       });
     }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
     console.log("sending email.."); // 6-digit OTP
-    const sentEmail = sendMail(fullname, email, otp);
+    const sentEmail = await sendMail(fullname, email, otp);
 
     if (!sentEmail) {
       return res.status(500).json({
@@ -196,10 +154,12 @@ export async function SendOtp(req, res) {
         email,
       });
     }
+
     res.status(200).json({
       msg: "Verification email sent successfully",
       otp: otp,
     });
+
   } catch (error) {
     return res.status(500).json({
       msg: "Server error: Error in verification API",
@@ -207,3 +167,59 @@ export async function SendOtp(req, res) {
     });
   }
 }
+
+/**
+ * @desc    Add bio for profile
+ * @route   POST /user/bio
+ * @access  Public
+ */
+
+export async function addBio (req, res) {
+  try {
+    const userId = req.user?._id;
+    const { bio } = req.body;
+
+    if(!bio){
+      return res.status(404).json({
+        success: false,
+        msg: "Please provide bio",
+      });
+    }else if(!userId){
+      return res.status(404).json({
+        success: false,
+        msg: "Please provide user id",
+      });
+    }
+
+    const newBio = await Users.findByIdAndUpdate(
+      userId,
+      { bio },
+      { new: true }
+    )
+
+    if(!newBio){
+      return res.status(404).json({
+        success: false,
+        msg: "No user found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      msg: "User bio updated",
+    });
+  }catch(error){
+    res.status(500).json({
+      msg: "Error adding Bio",
+      error: error.message
+    })
+  }
+}
+
+/**
+ * @desc    Add profile picture
+ * @route   POST /user/profile-pic
+ * @access  Public
+ */
+
+

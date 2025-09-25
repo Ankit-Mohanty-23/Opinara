@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 const userSchema = new mongoose.Schema({
     email: {
         type: String,
+        unique: true,
         required: true
     },
     fullname: {
@@ -14,6 +15,32 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true
+    },
+    wave: {
+        type: String,
+    },
+    avatar: {
+        type: {
+            type: String,
+            enum: ["image"],
+        },
+        url: {
+            type: String,
+            default: "",
+        },
+        public_id: {
+            type: String,
+            default: ""
+        },
+    },
+    bio: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    karma: {
+        type: Number,
+        default: 0
     }
 },{
     timestamps: true
@@ -42,5 +69,5 @@ userSchema.methods.comparePassword = async function(candidatePassword){
     }
 }
 
-const Users = mongoose.model('User', userSchema);
+const Users = mongoose.model('Users', userSchema);
 export default Users;

@@ -1,20 +1,40 @@
-import express from "express";
 import dotenv from "dotenv";
-import connectdb from "./database/db.js";
-import LoginRouter from "./routes/userRoutes.js"
-import postRouter from "./routes/postRoutes.js"
+import os from "os";
+import cluster from "node:cluster";
+import mongoose from "mongoose";
+import app from "./app.js";
+
+const totalCPUs = os.cpus().length;
 
 dotenv.config();
 
-const app = express();
-app.use(express.json());
-
-app.use('/user', LoginRouter);
-app.use('/post', postRouter);
-
 const PORT = process.env.PORT;
-app.listen(PORT, async () => {
-    console.log(`Loading Server ...`);
-    await connectdb();
-    console.log(`Server is running at ${PORT} Port`);
-});
+const MONGO_URL = process.env.MONGO_URL;
+
+if (cluster.isPrimary) {
+  console.log(`Primary ${process.pid} is running`);
+
+  for (let i = 0; i < totalCPUs; i++) {
+    cluster.fork();
+  }
+
+  cluster.on("exit", (worker, code, signal) => {
+    console.log(`Worker ${worker.process.pid} died. Restarting...`);
+    cluster.fork();
+  });
+} else {
+
+  (async () => {
+    try{
+        const conn = await mongoose.connect(MONGO_URL);
+        console.log(`Worker ${process.pid}: Mongodb connected`);
+
+        app.listen(PORT, () => {
+            console.log(`Worker ${process.pid}: app is listening to ${PORT} Port`);
+        });
+    }catch(err){
+        console.error(`Worker ${process.pid}: Failed to connect to DB`, err);
+        process.exit(1);
+    }
+  })();
+}

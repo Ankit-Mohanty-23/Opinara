@@ -6,6 +6,11 @@ const postSchema = new mongoose.Schema({
         ref: "Users",
         required: true,
     },
+    wave: {
+        type: String,
+        unique: true,
+        required: true,
+    },
     title: {
         type: String,
         trim: true,
@@ -24,7 +29,7 @@ const postSchema = new mongoose.Schema({
             },
             url: {
                 type: String,
-                requied: true,
+                required: true,
             },
             public_id: {
                 type: String,
@@ -48,7 +53,7 @@ const postSchema = new mongoose.Schema({
         {
             user: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: "User",
+                ref: "Users",
             },
             text: String,
             createdAt: {
