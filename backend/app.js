@@ -24,7 +24,7 @@ app.use(
 app.use(express.json());
 app.use(
   session({
-    secret: "opinara", // keep secret in .env in production
+    secret: process.env.SESSION_SECRET || "opinara", // keep secret in .env in production
     resave: false,
     saveUninitialized: false,
     cookie: {
