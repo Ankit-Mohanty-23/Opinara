@@ -57,6 +57,15 @@ export default function OpinaraAuth() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleGoogle = async () => {
+    try{
+      window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
+    }catch(err){
+      console.log("google error: ", err);
+      alert("Google Auth Failed!");
+    }
+  }
+
   const handleSubmit = async () => {
     if (validateForm()) {
       try {
@@ -68,7 +77,6 @@ export default function OpinaraAuth() {
           alert("Signup successful!");
           setIsLogin(true);
         } else {
-          console.log("Login url: ", import.meta.env.VITE_API_URL);
           const response = await axios.post(
             `${import.meta.env.VITE_API_URL}/user/login`,
             {
@@ -368,7 +376,7 @@ export default function OpinaraAuth() {
 
             {/* Social Login */}
             <div className="grid mx-30">
-              <button className="flex items-center justify-center gap-2 py-2.5 border-2 border-gray-200 rounded-lg hover:border-[#007BFF] hover:bg-[#F8F9FA] transition font-semibold text-[#212529] text-sm">
+              <button onClick = {handleGoogle} className="flex items-center justify-center gap-2 py-2.5 border-2 border-gray-200 rounded-lg hover:border-[#007BFF] hover:bg-[#F8F9FA] transition font-semibold text-[#212529] text-sm">
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
