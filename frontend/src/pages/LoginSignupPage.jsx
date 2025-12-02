@@ -87,6 +87,7 @@ export default function OpinaraAuth() {
           alert("Login successful!");
           localStorage.setItem("token", response.data.token);
           // get user id and navigate to /dashboard/userid
+          navigate(`/home`)
         }
       } catch (err) {
         console.log("Signup/Login Error", err);
