@@ -1,5 +1,7 @@
 import Post from "../models/post.model.js";
 import { v2 as cloudinary } from "cloudinary";
+import checkToxicity from "/Llama-setup/toxicity-check.js";
+import summarize from "/Llama-setup/summarizer.js";
 
 /**
  * @desc    Create new post
@@ -40,7 +42,6 @@ export async function createPost(req, res) {
 
     res.status(201).json({
       success: true,
-      msg: "new post created",
       post: savedPost,
     });
   } catch (error) {
@@ -157,14 +158,13 @@ export async function deletePost(req, res) {
 
     res.status(200).json({
       success: true,
-      msg: "Post Deleted",
       post: deletedPost,
     });
   } catch (error) {
     console.log("error in deleting post: ", error);
     res.status(500).json({
       success: false,
-      msg: "Server Error",
+      msg: "Failed to Delete post",
       error: error.message,
     });
   }
@@ -228,14 +228,13 @@ export async function toggleVote(req, res) {
 
     res.status(201).json({
       success: true,
-      msg: "Vote updated successfully",
       upvote: updatedPost.upvotes.length,
       downvotes: updatedPost.downvotes.length,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      msg: "Error updating vote",
+      msg: "Failed in updating vote",
       error: error.message,
     });
   }
@@ -243,7 +242,7 @@ export async function toggleVote(req, res) {
 
 /**
  * @desc    Comments for a post
- * @route   PATCH post/:postId/comment/
+ * @route   POST post/:postId/comment/
  * @access  Public
  */
 
@@ -268,13 +267,101 @@ export async function addComment(req, res){
         await post.save();
 
         res.status(200).json({
-            msg: "Comment added",
-            post: post
+          success: true,
+          post: post
         })
     }catch(error){
-        res.status(500).json({
-            msg: "Error in commenting",
-            error: error.message
-        });
+      res.status(500).json({
+        success: false,
+        msg: "Error in commenting",
+        error: error.message
+      });
     }
 }
+
+/**
+ * @desc    strict toxicity classifier
+ * @route   POST post/:postId/classify
+ * @access  Public
+ */
+
+export async function classifier(req, res){
+  try{
+    const postId = req.params.postId;
+
+    const post = await Post.findById({ _id: postId });
+
+    if(!post){
+      return res.status(404),json({
+        success: false,
+        msg: "Post not found for classifying!"
+      })
+    }
+
+    const title = post.title;
+    const context = post.content;
+
+    const contextResult = await checkToxicity(context);
+
+    if(!contextResult && !titleResult){
+      return res.status(400).json({
+        success: false,
+        msg: `Classification failed for ${title}`,
+      })
+    }
+
+    res.status(200).json({
+      success: true,
+      class: contextResult,
+    }) 
+  }catch(error){
+    res.status(500).json({
+      success: false,
+      msg: "Failed in Classification of content",
+      error: error.message,
+    })
+  }
+}
+
+/**
+ * @desc    Summarization of content
+ * @route   POST post/:postId/summary
+ * @access  Public
+ */
+
+export async function summary(req, res){
+  try{
+    const postId = req.params.postId;
+
+    const post = await Post.findById({ _id: postId });
+    if(!post){
+      return res.status(404).json({
+        success: false,
+        msg: "Post not found for summary!"
+      })
+    }
+
+    const content = post.content;
+    const title = post.title;
+    const result = await summarize(content);
+    if(!result){
+      return res.status(400).json({
+        success: false,
+        msg: `summary failed for ${title}`
+
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      summary: result,
+    })
+  }catch(error){
+    res.status(500).json({
+      success: false,
+      msg: "Failed in summaring the content",
+      error: error.message,
+    })
+  }
+}
+
