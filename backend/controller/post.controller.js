@@ -1,7 +1,7 @@
 import Post from "../models/post.model.js";
+import Users from "../models/user.model.js";
 import { v2 as cloudinary } from "cloudinary";
 import checkToxicity from "/Llama-setup/toxicity-check.js";
-import summarize from "/Llama-setup/summarizer.js";
 
 /**
  * @desc    Create new post
@@ -56,13 +56,13 @@ export async function createPost(req, res) {
 
 /**
  * @desc    Get all posts
- * @route   GET /post/all/:userId
+ * @route   GET /posts
  * @access  Public
  */
 
 export async function getAllPosts(req, res) {
   try {
-    const author = req.params.userId;
+    const author = req.user?._id;
 
     const posts = await Post.find({author});
     if (posts.length === 0) {
@@ -88,7 +88,7 @@ export async function getAllPosts(req, res) {
 
 /**
  * @desc    Get any specific post
- * @route   GET /post/one/:postId
+ * @route   GET /post/:postId
  * @access  Public
  */
 
@@ -252,6 +252,13 @@ export async function addComment(req, res){
         const postId = req.params.postId;
         const { content } = req.body;
 
+        if (!content || !content.trim()) {
+            return res.status(400).json({
+                success: false,
+                msg: "Comment content is required"
+            });
+        }
+
         const post = await Post.findById({ _id: postId });
         if(!post){
             return res.status(404).json({
@@ -260,9 +267,19 @@ export async function addComment(req, res){
             });
         }
 
+        // Fetch user to get username
+        const user = await Users.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                msg: "User not found"
+            });
+        }
+
         post.comments.push({
             user: userId,
-            text: content,
+            username: user.fullname,
+            text: content.trim(),
         });
         await post.save();
 
@@ -322,46 +339,3 @@ export async function classifier(req, res){
     })
   }
 }
-
-/**
- * @desc    Summarization of content
- * @route   POST post/:postId/summary
- * @access  Public
- */
-
-export async function summary(req, res){
-  try{
-    const postId = req.params.postId;
-
-    const post = await Post.findById({ _id: postId });
-    if(!post){
-      return res.status(404).json({
-        success: false,
-        msg: "Post not found for summary!"
-      })
-    }
-
-    const content = post.content;
-    const title = post.title;
-    const result = await summarize(content);
-    if(!result){
-      return res.status(400).json({
-        success: false,
-        msg: `summary failed for ${title}`
-
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      summary: result,
-    })
-  }catch(error){
-    res.status(500).json({
-      success: false,
-      msg: "Failed in summaring the content",
-      error: error.message,
-    })
-  }
-}
-
