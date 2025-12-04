@@ -1,6 +1,7 @@
 import Users from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import sendMail from "../services/sendEmails.js";
+import { v2 as cloudinary } from "cloudinary";
 
 /**
  * @desc    Create new User
@@ -13,27 +14,31 @@ export async function signup(req, res) {
     const { email, fullname, password } = req.body;
     if (!email || !fullname || !password) {
       return res.status(400).json({
+        success: false,
         msg: "Please provide email, fullName and password correctly",
       });
     }
     const existingUser = await Users.findOne({ email });
     if (existingUser) {
       return res.status(409).json({
+        success: false,
         msg: "User already exits",
       });
     }
     const newUser = await new Users({
+      googleId: "Custom Signup",
       email,
       fullname,
       password,
     }).save();
 
     res.status(201).json({
+      success: true,
       msg: "New User Created",
-      newUser,
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       msg: "Signup Failed",
       error: error.message,
     });
@@ -100,7 +105,8 @@ export async function getUser(req, res) {
     const userId = req.user?._id;
 
     if (!userId) {
-      res.status(400).json({
+      return res.status(400).json({
+        success: false,
         msg: "Id not found",
       });
     }
@@ -108,17 +114,21 @@ export async function getUser(req, res) {
     const UserData = await Users.findOne({ _id: userId });
 
     if (!UserData) {
-      res.status(400).json({
+      return res.status(404).json({
+        success: false,
         msg: "User Data not found",
       });
     }
 
     res.status(200).json({
+      success: true,
       data: UserData,
     });
   } catch (error) {
     return res.status(500).json({
+      success: false,
       msg: "Server error: Error in getUser API",
+      error: error.message,
     });
   }
 }
@@ -157,7 +167,6 @@ export async function SendOtp(req, res) {
       msg: "Verification email sent successfully",
       otp: otp,
     });
-    
   } catch (error) {
     return res.status(500).json({
       msg: "Server error: Error in verification API",
@@ -217,5 +226,71 @@ export async function addBio(req, res) {
 /**
  * @desc    Add profile picture
  * @route   POST /user/profile-pic
- * @access  Public
+ * @access  Protected
  */
+export async function addProfilePic(req, res) {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        msg: "User ID not found",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        msg: "Please provide a profile picture",
+      });
+    }
+
+    const user = await Users.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        msg: "User not found",
+      });
+    }
+
+    if (user.profile_pic?.public_id) {
+      try {
+        await cloudinary.uploader.destroy(user.profile_pic.public_id);
+      } catch (cloudinaryError) {
+        console.error("Error deleting old profile picture:", cloudinaryError);
+      }
+    }
+
+    const updatedUser = await Users.findByIdAndUpdate(
+      userId,
+      {
+        profile_pic: {
+          type: "image",
+          url: req.file.path,
+          public_id: req.file.filename || req.file.public_id,
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        msg: "Failed to update profile picture",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      msg: "Profile picture updated successfully",
+      profile_pic: updatedUser.profile_pic,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      msg: "Error updating profile picture",
+      error: error.message,
+    });
+  }
+}
