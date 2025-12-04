@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 
+// Define user schema
 const userSchema = new mongoose.Schema(
   {
     googleId: {
@@ -19,6 +20,7 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
+      // Not required for oauth-only account, so required is omitted
     },
     wave: [
       {
@@ -26,7 +28,7 @@ const userSchema = new mongoose.Schema(
         default: null,
       },
     ],
-    avatar: {
+    profile_pic: {
       type: {
         type: String,
         enum: ["image"],
@@ -55,7 +57,7 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Hashing the password
+// Password hashing: error handling and guard
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) {
     return next();
@@ -63,13 +65,13 @@ userSchema.pre("save", async function (next) {
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
+    return next();
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 
-// comparing hassed passwords
+// Compare hashed password
 userSchema.methods.comparePassword = async function (testpassword) {
   try {
     return await bcrypt.compare(testpassword, this.password);
@@ -78,21 +80,24 @@ userSchema.methods.comparePassword = async function (testpassword) {
   }
 };
 
-// Save readable timestamps
-userSchema.pre("save", function (next) {
-  const readable = new Date().toLocaleString("en-IN", {
+userSchema.index({ createdAt: -1 });
+
+userSchema.virtual("readableCreatedAt").get(function () {
+  return this.createdAt?.toLocaleString("en-IN", {
     hour12: true,
     timeZone: "Asia/Kolkata",
   });
-
-  // If document newly created
-  if (!this.createdAt) this.createdAt = readable;
-
-  // Always update updatedAt
-  this.updatedAt = readable;
-
-  next();
 });
+
+userSchema.virtual("readableUpdatedAt").get(function () {
+  return this.updatedAt?.toLocaleString("en-IN", {
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  });
+});
+
+userSchema.set("toJSON", { virtuals: true });
+userSchema.set("toObject", { virtuals: true });
 
 const Users = mongoose.model("Users", userSchema);
 export default Users;
