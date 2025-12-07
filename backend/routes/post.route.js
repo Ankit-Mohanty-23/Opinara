@@ -6,8 +6,6 @@ import {
   getAllPosts,
   getPost,
   deletePost,
-  toggleVote,
-  addComment,
 } from "../controller/post.controller.js";
 import {
   getUserId,
@@ -16,7 +14,7 @@ import {
   createPostSchema,
   deletePostSchema,
 } from "../validation/posts.validation.js";
-import validatePost from "../middleware/post.middleware.js";
+import validate from "../middleware/validate.middleware.js";
 
 const Router = express.Router();
 
@@ -27,10 +25,8 @@ Router.post(
   upload.array("media", 5),
   createPost
 );
-Router.get("/posts", auth, validatePost(createPostSchema), getAllPosts);
-Router.get("/:postId", auth, validatePost(getPostId), getPost);
-Router.delete("/:postId", auth, validatePost(deletePostSchema), deletePost);
-Router.patch("/:postId/vote", auth, toggleVote);
-Router.patch("/:postId/comment", auth, addComment);
+Router.get("/posts", auth, validate(createPostSchema), getAllPosts);
+Router.get("/:postId", auth, validate(getPostId), getPost);
+Router.delete("/:postId", auth, validate(deletePostSchema), deletePost);
 
 export default Router;
