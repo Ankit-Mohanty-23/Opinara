@@ -23,3 +23,20 @@ export const postVoteSchema = {
         }),
     }),
 };
+
+export const commentVoteSchema = {
+    user: z.object({
+        _id: objectSchema,
+    }),
+
+    params: z.object({
+        commentId: objectSchema,
+    }),
+
+    body: z.object({
+        action : z.enum(["upvote", "downvote"], {
+            required_error: "Vote action is required",
+            invalid_type_error: "Action must be upvote or downvote"
+        }),
+    }),
+};
