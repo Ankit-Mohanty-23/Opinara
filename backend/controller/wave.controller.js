@@ -57,13 +57,6 @@ export async function createWave(req, res) {
 }
 
 /**
- * @desc    Update Wave to present state
- * @route   GET /wave/update
- * @access  Public
- */
-
-
-/**
  * @desc    Get all posts
  * @route   GET /wave/:waveId/posts?page=1
  * @access  Public
