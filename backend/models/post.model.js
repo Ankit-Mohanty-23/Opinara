@@ -41,7 +41,8 @@ const postSchema = new mongoose.Schema(
         },
       },
     ],
-  },{ timestamps: true }
+  },
+  { timestamps: true }
 );
 
 // Add index for sorting by newest posts
