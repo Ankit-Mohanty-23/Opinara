@@ -1,29 +1,30 @@
 import mongoose from "mongoose";
 
 const voteSchema = mongoose.Schema(
-    {
-        userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-            required: true,
-            index: true
-        },
-        targetId: {
-            type: mongoose.Schema.Types.ObjectId,
-            required: true,
-            index: true,
-        },
-        targetType: {
-            type: String,
-            enum: ["Post", "Comment"],
-            required: true,
-        },
-        type: {
-            type: String,
-            enum: ["Upvote", "downVote"],
-            required: true,
-        },
-    },{ timestamps: true }
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    targetId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    targetType: {
+      type: String,
+      enum: ["Post", "Comment"],
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["Upvote", "downVote"],
+      required: true,
+    },
+  },
+  { timestamps: true }
 );
 
 // Query speed
