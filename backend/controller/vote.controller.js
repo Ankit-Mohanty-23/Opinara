@@ -20,12 +20,12 @@ export async function postVote(req, res) {
     let updatedVote;
 
     if (existingVote) {
-    // If same vote → remove it (toggle)
+      // If same vote → remove it (toggle)
       if (existingVote.type === action) {
         await existingVote.deleteOne();
         updatedVote = null;
       } else {
-    // Update to opposite vote
+        // Update to opposite vote
         const voteId = existingVote._id;
         updatedVote = await Vote.findByIdAndUpdate(
           voteId,
@@ -75,11 +75,11 @@ export async function commentVote(req, res) {
     }).exec();
 
     let updatedVote;
-    if(existingVote){
-      if(existingVote.type === action){
+    if (existingVote) {
+      if (existingVote.type === action) {
         await existingVote.deleteOne();
         updatedVote = null;
-      }else{
+      } else {
         updatedVote = await Vote.findByIdAndUpdate(
           existingVote._id,
           { type: action },
@@ -100,7 +100,6 @@ export async function commentVote(req, res) {
       message: "Comment vote updated.",
       data: updatedVote,
     });
-
   } catch (error) {
     console.error("Error voting on comment: ", error);
     return res.status(500).json({
@@ -109,4 +108,3 @@ export async function commentVote(req, res) {
     });
   }
 }
-
