@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import os from "os";
 import cluster from "node:cluster";
 import mongoose from "mongoose";
-import app from "./app.js";
+import app from "./src/app.js";
 
 const totalCPUs = os.cpus().length;
 
