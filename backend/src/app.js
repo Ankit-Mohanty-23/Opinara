@@ -40,7 +40,7 @@ app.use(passport.session());
 setupUser();
 
 app.use("/user", LoginRouter);
-app.use("/posts", postRouter);
+app.use("/post", postRouter);
 app.use("/auth", authRouter);
 
 export default app;
