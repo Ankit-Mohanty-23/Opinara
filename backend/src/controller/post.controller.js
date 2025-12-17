@@ -1,6 +1,6 @@
 import Post from "../models/post.model.js";
 import { v2 as cloudinary } from "cloudinary";
-import checkToxicity from "../../../Llama-setup/toxicity-check.js";
+import checkToxicity from "../../Llama-setup/toxicity-check.js";
 
 /**
  * @desc    Create new post
@@ -23,7 +23,7 @@ export async function createPost(req, res) {
       }));
     }
 
-    const newPost = await Post.create({
+    const response = await Post.create({
       userId,
       waveId,
       title,
@@ -33,8 +33,9 @@ export async function createPost(req, res) {
 
     return res.status(201).json({
       success: true,
-      data: newPost,
+      data: response,
     });
+
   } catch (error) {
     console.error("Error creating post: ", error);
     return res.status(500).json({
@@ -46,15 +47,22 @@ export async function createPost(req, res) {
 
 /**
  * @desc    Get all posts
- * @route   GET /posts
+ * @route   GET /posts?page=1
  * @access  Public
  */
 
 export async function getAllPosts(req, res) {
   try {
     const userId = req.user?._id;
+    const limit = 10;
+    const page = Number(req.query.page) || 1;
+    const skip = (page - 1)*limit;
 
-    const posts = await Post.find({ userId }).lean().exec();
+    const posts = await Post.find({ userId })
+    .sort({ createdAt: -1 })
+    .skip(skip).limit(limit)
+    .select(" title content media upvoteCount downvoteCount commentCount ")
+    .lean().exec();
 
     if (posts.length === 0) {
       return res.status(404).json({
@@ -86,7 +94,8 @@ export async function getPost(req, res) {
   try {
     const { postId } = req.params;
 
-    const post = await Post.findById(postId).lean().exec();
+    const post = await Post.findById(postId)
+    .lean().exec();
 
     if (!post) {
       return res.status(404).json({
@@ -119,7 +128,8 @@ export async function deletePost(req, res) {
     const userId = req.user?._id;
     const { postId } = req.params;
 
-    const deletedPost = await Post.findById(postId).lean().exec();
+    const deletedPost = await Post.findById(postId)
+    .lean().exec();
 
     if (!deletedPost) {
       return res.status(404).json({
@@ -150,8 +160,9 @@ export async function deletePost(req, res) {
 
     return res.status(200).json({
       success: true,
-      data: deletedPost,
+      message: "Post deleted by user"
     });
+
   } catch (error) {
     console.log("Error deleting post: ", error);
     return res.status(500).json({
