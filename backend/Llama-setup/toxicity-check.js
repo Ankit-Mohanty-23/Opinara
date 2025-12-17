@@ -171,7 +171,7 @@ async function classify(prompt, text) {
   }
 }
 
-export async function checkToxicity(text) {
+async function checkToxicity(text) {
   const [general, hate, harass, profanity] = await Promise.all([
     classify(BASE_PROMPT, text),
     classify(HATE_PROMPT, text),
@@ -211,8 +211,10 @@ export async function checkToxicity(text) {
     score: finalScore,
     status,
     topCategory,
-    reasons: result[topCategory].reason,
+    reasons: results[topCategory].reason,
     reviwedBy: "AI",
     checkedAt: new Date(),
   };
 }
+
+export default checkToxicity;
