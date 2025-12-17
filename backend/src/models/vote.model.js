@@ -20,7 +20,7 @@ const voteSchema = mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["Upvote", "downVote"],
+      enum: ["upvote", "downvote"],
       required: true,
     },
   },
