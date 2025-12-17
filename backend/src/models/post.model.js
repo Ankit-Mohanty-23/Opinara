@@ -17,12 +17,10 @@ const postSchema = new mongoose.Schema(
       type: String,
       trim: true,
       required: true,
-      maxlength: [200, "Title cannot exceed 200 characters"],
     },
     content: {
       type: String,
       trim: true,
-      maxlength: [5000, "Content cannot exceed 5000 characters"],
     },
     media: [
       {
@@ -41,6 +39,18 @@ const postSchema = new mongoose.Schema(
         },
       },
     ],
+    upvoteCount: {
+      type: Number,
+      default: 0,
+    },
+    downvoteCount: {
+      type: Number,
+      default: 0,
+    },
+    commentCount: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );
