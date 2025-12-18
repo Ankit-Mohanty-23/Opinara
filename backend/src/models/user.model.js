@@ -20,7 +20,6 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      // Not required for oauth-only account, so required is omitted
     },
     wave: [
       {
@@ -46,10 +45,16 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null,
+    },    
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
-    karma: {
-      type: Number,
-      default: 0,
+    deletedAt: {
+      type: Date,
+      default: null,
+      index: true,
     },
   },
   {
@@ -82,5 +87,5 @@ userSchema.methods.comparePassword = async function (testpassword) {
 
 userSchema.index({ createdAt: -1 });
 
-const Users = mongoose.model("Users", userSchema);
-export default Users;
+const User = mongoose.model("User", userSchema);
+export default User;

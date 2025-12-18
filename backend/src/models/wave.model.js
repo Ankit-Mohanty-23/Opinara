@@ -6,6 +6,7 @@ const waveSchema = new mongoose.Schema(
       type: String,
       unique: true,
       trim: true,
+      lowercase: true,
       required: true,
     },
     description: {
@@ -30,21 +31,20 @@ const waveSchema = new mongoose.Schema(
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Users",
+      ref: "User",
       required: true,
       index: true,
     },
     members: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Users",
+        ref: "User",
       },
     ],
     location: {
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point",
       },
       coordinates: {
         type: [Number],
@@ -52,14 +52,14 @@ const waveSchema = new mongoose.Schema(
           validator: function (v) {
             // For Point type, coordinates must be [longitude, latitude]
             return (
-              !v ||
-              (Array.isArray(v) &&
-                v.length === 2 &&
-                v.every((coord) => typeof coord === "number"))
+              Array.isArray(v) &&
+              v.length === 2 &&
+              v[0] >= -180 && v[0] <= 180 &&
+              v[1] >= -90 && v[1] <= 90
             );
           },
           message:
-            "Coordinates must be an array of exactly 2 numbers [longitude, latitude]",
+            "Coordinates must be [longitude, latitude]",
         },
       },
     },
@@ -76,6 +76,18 @@ const waveSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+waveSchema.pre("save", function(next){
+  if(
+    this.createdBy && 
+    !this.members.some(
+      (id) => id.toString() === this.createdBy.toString
+    )
+  ){
+    this.members.push(this.createdBy);
+  }
+  next();
+});
 
 waveSchema.index({ location: "2dsphere" });
 waveSchema.index({ createdAt: -1 });
