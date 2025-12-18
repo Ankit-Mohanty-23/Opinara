@@ -1,7 +1,10 @@
-import Users from "../models/user.model.js";
+import User from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import sendMail from "../services/sendEmails.js";
 import { v2 as cloudinary } from "cloudinary";
+import Post from "../models/post.model.js";
+import Comment from "../models/comment.model.js";
+import Vote from "../models/vote.model.js";
 
 /**
  * @desc    Create new User
@@ -12,20 +15,15 @@ import { v2 as cloudinary } from "cloudinary";
 export async function signup(req, res) {
   try {
     const { email, fullname, password } = req.body;
-    if (!email || !fullname || !password) {
-      return res.status(400).json({
-        success: false,
-        msg: "Please provide email, fullName and password correctly",
-      });
-    }
-    const existingUser = await Users.findOne({ email });
+   
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(409).json({
         success: false,
         msg: "User already exits",
       });
     }
-    const newUser = await new Users({
+    const newUser = await new User({
       googleId: "Custom Signup",
       email,
       fullname,
@@ -54,13 +52,8 @@ export async function signup(req, res) {
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        msg: "Please provide email and password correctly",
-      });
-    }
-    const user = await Users.findOne({ email }).select("+password");
+    
+    const user = await User.findOne({ email }).select("+password");
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -104,14 +97,7 @@ export async function getUser(req, res) {
   try {
     const userId = req.user?._id;
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        msg: "Id not found",
-      });
-    }
-
-    const UserData = await Users.findOne({ _id: userId });
+    const UserData = await User.findOne({ _id: userId });
 
     if (!UserData) {
       return res.status(404).json({
@@ -142,12 +128,6 @@ export async function getUser(req, res) {
 export async function SendOtp(req, res) {
   try {
     const { email, fullname } = req.body;
-
-    if (!email || !fullname) {
-      return res.status(400).json({
-        msg: "Please provide email and name correctly",
-      });
-    }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -186,23 +166,7 @@ export async function addBio(req, res) {
     const userId = req.user?._id;
     const { bio } = req.body;
 
-    if (!bio) {
-      return res.status(404).json({
-        success: false,
-        msg: "Please provide bio",
-      });
-    } else if (!userId) {
-      return res.status(404).json({
-        success: false,
-        msg: "Please provide user id",
-      });
-    }
-
-    const newBio = await Users.findByIdAndUpdate(
-      userId,
-      { bio },
-      { new: true }
-    );
+    const newBio = await User.findByIdAndUpdate(userId, { bio }, { new: true });
 
     if (!newBio) {
       return res.status(404).json({
@@ -228,25 +192,12 @@ export async function addBio(req, res) {
  * @route   POST /user/profile-pic
  * @access  Protected
  */
+
 export async function addProfilePic(req, res) {
   try {
     const userId = req.user?._id;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        msg: "User ID not found",
-      });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        msg: "Please provide a profile picture",
-      });
-    }
-
-    const user = await Users.findById(userId);
+ 
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -262,7 +213,7 @@ export async function addProfilePic(req, res) {
       }
     }
 
-    const updatedUser = await Users.findByIdAndUpdate(
+    const updatedUser = await User.findByIdAndUpdate(
       userId,
       {
         profile_pic: {
@@ -291,6 +242,79 @@ export async function addProfilePic(req, res) {
       success: false,
       msg: "Error updating profile picture",
       error: error.message,
+    });
+  }
+}
+
+/**
+ * @desc    Add profile picture
+ * @route   POST /user/profile-pic
+ * @access  Protected
+ */
+
+export async function deleteUser(req, res){
+  try{
+    const userId = req.user?._id;
+    
+    const user = await User.findById(userId);
+    if(!user || user.isDeleted){
+      res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const [ postCount, commentCount, voteCount ] = await Promise.all([
+      Post.countDocuments({ userId }),
+      Comment.countDocuments({ userId }),
+      Vote.countDocuments({ userId }),
+    ]);
+
+    const hasActivity = postCount > 0 || commentCount > 0 || voteCount > 0;
+
+    /**
+   * CASE 1: No activity → Hard delete
+   */
+
+    if(!hasActivity){
+      await User.findByIdAndDelete({ _id: userId });
+
+      return res.status(200).json({
+        success: true,
+        message: "User account permanently deleted",
+      });
+    }
+
+    /**
+   * CASE 2: Has activity → Soft delete + cascade hide
+   */
+
+    const now = new Date();
+
+    user.isDeleted = true;
+    user.deletedAt = now;
+    await user.save();
+
+    await Post.updateMany(
+      { userId, isDeleted: false },
+      { $set: { isDeleted: true, deletedAt: now } }
+    );
+
+    await Comment.updateMany(
+      { userId, isDeleted: false },
+      { $set: { isDeleted: true, deletedAt: now } }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "User account is deleted successfully",
+    });
+
+  }catch(error){
+    console.error("Error deleting user: ", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while deleting user account",
     });
   }
 }
