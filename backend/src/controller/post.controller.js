@@ -1,3 +1,5 @@
+import Comment from "../models/comment.model.js";
+import Vote from "../models/vote.model.js";
 import Post from "../models/post.model.js";
 import { v2 as cloudinary } from "cloudinary";
 import checkToxicity from "../../Llama-setup/toxicity-check.js";
@@ -118,7 +120,7 @@ export async function getPost(req, res) {
 }
 
 /**
- * @desc    Delete post
+ * @desc    Delete a post
  * @route   DELETE post/:postId
  * @access  Private
  */
@@ -128,39 +130,65 @@ export async function deletePost(req, res) {
     const userId = req.user?._id;
     const { postId } = req.params;
 
-    const deletedPost = await Post.findById(postId)
-    .lean().exec();
+    const post = await Post.findById(postId).exec();
 
-    if (!deletedPost) {
+    if (!post || post.isDeleted) {
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
 
-    if (deletedPost.userId.toString() !== userId.toString()) {
+    if (post.userId.toString() !== userId.toString()) {
       return res.status(403).json({
         success: false,
         message: "Invalid User, You are not allowed to delete this post",
       });
     }
 
-    //Delete all media files from Cloudinary
-    if (deletedPost.media && deletedPost.media.length > 0) {
-      for (const item of deletedPost.media) {
-        if (item.public_id) {
-          await cloudinary.uploader.destroy(item.public_id, {
-            resource_type: item.type === "video" ? "video" : "image",
-          });
+    const [commentCount, voteCount] = await Promise.all([
+      Comment.countDocuments({ postId }),
+      Vote.countDocuments({ targetId: postId, targetType: "Post" }),
+    ]);
+
+    const hasEngagement = commentCount > 0 || voteCount > 0;
+
+    if(!hasEngagement){
+       //Delete all media files from Cloudinary
+      if (post.media && post.media.length > 0) {
+        for (const item of post.media) {
+          if (item.public_id) {
+            await cloudinary.uploader.destroy(item.public_id, {
+              resource_type: item.type === "video" ? "video" : "image",
+            });
+          }
         }
       }
+
+      await Post.deleteOne({ _id: postId });
+      await Comment.deleteMany({ postId })
+
+      return res.status(200).json({
+        success: true,
+        message: "Post deleted by user"
+      });
     }
 
-    await Post.findByIdAndDelete(postId);
+    const now = new Date();
 
+    await Post.updateOne(
+      { _id: postId },
+      { $set: { isdeleted: true, deletedAt: now } },
+    );
+
+    await Comment.updateOne(
+      { postId, isDeleted: false },
+      { $set: { isdeleted: true, deletedAt: now } },
+    );
+    
     return res.status(200).json({
       success: true,
-      message: "Post deleted by user"
+      message: "Post deleted successfully",
     });
 
   } catch (error) {
