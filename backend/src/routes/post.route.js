@@ -14,12 +14,12 @@ import {
   createPostSchema,
   deletePostSchema,
 } from "../validation/posts.validation.js";
-import validate from "../middleware/validate.middleware.js";
+import { validate } from "../middleware/validate.middleware.js";
 
 const Router = express.Router();
 
 Router.post(
-  "/create",
+  "/:waveId/create",
   auth,
   validate(createPostSchema),
   upload.array("media", 5),
