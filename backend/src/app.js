@@ -1,12 +1,12 @@
 import express from "express";
-import LoginRouter from "./src/routes/user.route.js";
-import postRouter from "./src/routes/post.route.js";
-import logger from "./src/util/logger.js";
+import LoginRouter from "./routes/user.route.js";
+import postRouter from "./routes/post.route.js";
+import logger from "./util/logger.js";
 import cors from "cors";
 import passport from "passport";
 import session from "express-session";
-import setupUser from "./src/services/passport.js";
-import authRouter from "./src/controller/google.auth.controller.js";
+import setupUser from "./services/passport.js";
+import authRouter from "./controller/google.auth.controller.js";
 
 console.log = (...args) => logger.info(args.join(" "));
 console.error = (...args) => logger.error(args.join(" "));
