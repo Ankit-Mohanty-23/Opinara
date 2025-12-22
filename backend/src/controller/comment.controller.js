@@ -1,4 +1,5 @@
 import Comment from "../models/comment.model.js";
+import Post from "../models/post.model.js";
 
 /**
  * @desc    Handle comment for a post
@@ -12,6 +13,30 @@ export async function createComment(req, res) {
     const { postId } = req.params;
     const { content, parentComment } = req.body;
 
+    const post = await Post.findById(postId).exec();
+
+    if(!post || post.isDeleted || post.isOrphaned){
+      return res.status(403).json({
+        success: false,
+        message: "Cannot comment on this post",
+      });
+    }
+
+    if(parentComment){
+      const parent = await Comment.findById(parentComment).exec();
+
+      if(
+        !parent ||
+        parent.isDeleted ||
+        parent.postId.toString() === postId
+      ){
+        return res.status(400).json({
+          success: false,
+          message: "Invalid parent comment",
+        });
+      }
+    }
+
     const newComment = await Comment.create({
       postId,
       userId,
@@ -19,10 +44,16 @@ export async function createComment(req, res) {
       parentCommentId: parentComment || null,
     });
 
+    await Post.updateOne(
+      { _id: postId }, 
+      { $inc: { commentCount: 1 } }
+    );
+
     return res.status(201).json({
       success: true,
       data: newComment,
     });
+
   } catch (error) {
     console.error("Error creating new comment", error.message);
     return res.status(500).json({
@@ -68,6 +99,7 @@ export async function getRootComments(req, res) {
       success: true,
       data: enriched,
     });
+
   } catch (error) {
     console.error("Error fetching parent comments: ", error.message);
     return res.status(500).json({
@@ -89,9 +121,7 @@ export async function getReplies(req, res) {
 
     const replies = await Comment.find({
       parentcommentId: commentId,
-    })
-      .sort({ vote: -1, createdAt: -1 })
-      .lean();
+    }).sort({ vote: -1, createdAt: -1 }).lean();
 
     const enriched = await promise.all(
       replies.map(async (r) => {
@@ -106,12 +136,104 @@ export async function getReplies(req, res) {
       success: false,
       data: enriched,
     });
+
   } catch (error) {
     console.error("Error getting replies: ", error.message);
     return res.status(500).json({
       success: false,
       message: "Internal server error while fetching replies",
     });
+  }
+}
+
+/**
+ * @desc    delete a comment
+ * @route   DELETE /:commentId/delete
+ * @access  private
+ */
+
+
+export async function deleteComment(req, res){
+  try{
+    const userId = req.user?._id;
+    const { commentId } = req.params;
+
+    const comment = await Comment.findById(commentId).exec();
+
+    if(!comment){
+      return res.status(403).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    if(comment.isDeleted){
+      return res.status(403).json({
+        success: true,
+        message: "Comment already deleted",
+      });
+    }
+
+    if(comment.userId.toString() !== userId.toString()){
+      return res.status(400).json({
+        success: false,
+        message: "Invalid User, You are not allowed to delete this comment",
+      });
+    }
+
+    const commentAge = Date.now() - new Date(comment.createdAt).getTime();
+    const ageWithinLimit = commentAge <= (60*1000);
+
+    const hasReplies = await Comment.exists({
+      parentCommentId: comment._id,
+      isDeleted: false,
+    });
+
+    const hasVotes = await Vote.exists({
+      targetId: comment._id,
+      targetType: "Comment",
+    })
+
+    const isHardDelete = 
+      ageWithinLimit && !hasReplies && !hasVotes;
+
+    if(isHardDelete){
+      await Comment.deleteOne({ _id: comment._id });
+
+      await Vote.deleteMany({
+        targetId: comment._id,
+        targetType: "Comment",
+      });
+
+      await Post.findByIdAndUpdate(comment.postId, {
+        $inc: { commentCount: -1 },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Comment permanently deleted",
+      });
+    }
+
+    comment.isDeleted = true,
+    comment.isDeleted = new Date();
+    await comment.save();
+    
+    await Post.findByIdAndUpdate(comment.postId, {
+      $inc: { commentCount: -1 },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Comment soft deleted"
+    });
+
+  }catch(error){
+    console.error("Error while deleting Comment: ", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while deleting comment"
+    })
   }
 }
 
