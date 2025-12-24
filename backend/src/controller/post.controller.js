@@ -63,7 +63,7 @@ export async function getAllPosts(req, res) {
     const posts = await Post.find({ userId })
     .sort({ createdAt: -1 })
     .skip(skip).limit(limit)
-    .select(" title content media upvoteCount downvoteCount commentCount ")
+    .select("title content media upvoteCount downvoteCount commentCount")
     .lean().exec();
 
     if (posts.length === 0) {
@@ -97,6 +97,7 @@ export async function getPost(req, res) {
     const { postId } = req.params;
 
     const post = await Post.findById(postId)
+    .select("title content media upvotesCount downvoteCount commentCount isDeleted")
     .lean().exec();
 
     if (!post) {
@@ -110,6 +111,7 @@ export async function getPost(req, res) {
       success: true,
       data: post,
     });
+    
   } catch (error) {
     console.error("Error getting post: ", error);
     return res.status(500).json({
@@ -152,7 +154,8 @@ export async function deletePost(req, res) {
     ]);
 
     const hasEngagement = commentCount > 0 || voteCount > 0;
-
+    
+    //hard delete a post
     if(!hasEngagement){
        //Delete all media files from Cloudinary
       if (post.media && post.media.length > 0) {
