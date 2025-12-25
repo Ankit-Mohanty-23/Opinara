@@ -5,7 +5,7 @@ import {
   login,
   signup,
   getUser,
-  SendOtp,
+  sendOtp,
   addBio,
   addProfilePic,
   deleteUser,
@@ -24,7 +24,7 @@ const Router = express.Router();
 
 Router.post("/signup", validate(loginSchema), signup);
 Router.post("/login", validate(signupSchema), login);
-Router.post("/verify", validate(getOtpSchema), SendOtp);
+Router.post("/verify", validate(getOtpSchema), sendOtp);
 Router.get("/data", auth, validate(getUserIdSchema), getUser);
 Router.delete("/delete", auth, validate(getUserIdSchema), deleteUser);
 Router.put("/bio", auth, validate(getBioSchema), addBio);
