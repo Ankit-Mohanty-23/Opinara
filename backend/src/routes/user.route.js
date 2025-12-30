@@ -22,8 +22,11 @@ import { validate, validateFile } from "../middleware/validate.middleware.js";
 
 const Router = express.Router();
 
+// Public
 Router.post("/signup", validate(loginSchema), signup);
 Router.post("/login", validate(signupSchema), login);
+
+// Protected
 Router.post("/verify", validate(getOtpSchema), sendOtp);
 Router.get("/data", auth, validate(getUserIdSchema), getUser);
 Router.delete("/delete", auth, validate(getUserIdSchema), deleteUser);
