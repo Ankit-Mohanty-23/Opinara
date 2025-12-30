@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { AppError } from "../utils/AppError.js";
 
 dotenv.config();
 
@@ -16,43 +17,36 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Resolve HTML template path relative to this file (ESM-safe)
+// Resolve HTML template path (ESM-safe)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const htmlTemplatePath = path.join(__dirname, "emailhtml.html");
 const htmlTemplate = fs.readFileSync(htmlTemplatePath, "utf8");
 
 const sendMail = async (fullname, userEmail, otp) => {
-  let finalHtml = htmlTemplate
-    .replace(/{{user_name}}/g, fullname)
-    .replace(/{{verification_code}}/g, otp);
+  try {
+    const finalHtml = htmlTemplate
+      .replace(/{{user_name}}/g, fullname)
+      .replace(/{{verification_code}}/g, otp);
 
-  const mailOption = {
-    from: `"Opinara" <${process.env.EMAIL_USER}>`,
-    to: userEmail,
-    subject: "Verify your email address",
-    html: finalHtml,
-  };
-
-  return new Promise((resolve, reject) => {
-    transporter.sendMail(mailOption, (err, info) => {
-      if (err) {
-        console.error("Error sending email:", err);
-        return resolve({
-          success: false,
-          message: "Failed to send Email",
-          error: err,
-        });
-      } else {
-        console.log("OTP Send: ", info.response);
-        return resolve({
-          success: false,
-          message: "Send OTP Mail",
-          info: info,
-        });
-      }
+    await transporter.sendMail({
+      from: `"Opinara" <${process.env.EMAIL_USER}>`,
+      to: userEmail,
+      subject: "Verify your email address",
+      html: finalHtml,
     });
-  });
+  } catch (error) {
+    throw new AppError(
+      "Failed to send email",
+      502,
+      {
+        mail: userEmail,
+        errorMessage: error.message,
+        errorCode: error.code,
+        service: "email",
+      }
+    );
+  }
 };
 
 export default sendMail;
