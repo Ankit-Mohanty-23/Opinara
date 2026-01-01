@@ -52,6 +52,16 @@ const postSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    isToxic: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    toxicityReason: {
+      type: String,
+      default: null,
+    },
     isOrphaned: {
       type: Boolean,
       default: false,
