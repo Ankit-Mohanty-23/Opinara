@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { AppError } from "../utils/AppError.js";
+import AppError from "../util/AppError.js"
 
 dotenv.config();
 
