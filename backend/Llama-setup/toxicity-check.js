@@ -2,7 +2,7 @@ import Groq from "groq-sdk";
 import dotenv from "dotenv";
 dotenv.config();
 
-const client = new Groq({ apikey: process.env.Groq_API_KEY });
+const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const BASE_PROMPT = `
 You are a strict content moderation classifier.
@@ -137,18 +137,18 @@ Return JSON only:
 
 const threshold = 60;
 
-const severityOrder = ["hate", "haressment", "general", "profanity"];
+const severityOrder = ["hate", "harassment", "general", "profanity"];
 
 const weight = {
   general: 0.5,
   hate: 0.2,
-  harresment: 0.2,
+  harassment: 0.2,
   profanity: 0.1,
 };
 
 function safeParseJSON(content) {
   try {
-    JSON.parse(content);
+    return JSON.parse(content);
   } catch {
     return { score: 0, reason: "parse_error" };
   }
@@ -163,7 +163,8 @@ async function classify(prompt, text) {
         { role: "user", content: text },
       ],
       temperature: 0,
-    });
+      response_format: { type: "json_object" }
+    });    
 
     return safeParseJSON(response.choices[0].message.content);
   } catch {
@@ -172,47 +173,47 @@ async function classify(prompt, text) {
 }
 
 async function checkToxicity(text) {
-  const [general, hate, harass, profanity] = await Promise.all([
+  const [general, hate, harassment, profanity] = await Promise.all([
     classify(BASE_PROMPT, text),
     classify(HATE_PROMPT, text),
     classify(HARASSMENT_PROMPT, text),
     classify(PROFANITY_PROMPT, text),
   ]);
 
-  const results = { general, hate, harssement, profanity };
+  const results = { general, hate, harassment, profanity };
 
   const finalScore = Math.round(
-    Object.entries(results).reduce(
-      (sum, [key, val]) => sum + val.score * weight[key],
-      0
-    )
+    Object.entries(results).reduce((sum, [key, val]) => {
+      const score = typeof val?.score === "number" ? val.score : 0;
+      return sum + score * weight[key];
+    }, 0)
   );
 
-  let topCategory = null;
-
-  for (const key of severityOrder) {
-    if (results[key].score >= threshold) {
-      topCategory = key;
-      break;
-    }
-  }
+  let topCategory = severityOrder.find(
+    (key) => results[key]?.score >= threshold
+  );
 
   if (!topCategory) {
-    topCategory = Object.entries(results).reduce(
-      (max, curr) => (curr[1].score > max[1].score ? curr : max),
-      { score: -1 }
+    [topCategory] = Object.entries(results).reduce(
+      (max, curr) =>
+        curr[1]?.score > max[1]?.score ? curr : max,
+      ["general", { score: -1 }]
     );
   }
 
   const status =
-    finalScore > 60 ? "rejected" : finalScore > 30 ? "pending" : "approved";
+    finalScore >= threshold
+      ? "rejected"
+      : finalScore >= 30
+      ? "pending"
+      : "approved";
 
   return {
     score: finalScore,
     status,
     topCategory,
-    reasons: results[topCategory].reason,
-    reviwedBy: "AI",
+    reason: results[topCategory]?.reason ?? "no_violation",
+    reviewedBy: "AI",
     checkedAt: new Date(),
   };
 }
