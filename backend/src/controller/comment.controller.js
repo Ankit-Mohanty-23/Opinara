@@ -1,5 +1,8 @@
+import mongoose from "mongoose";
 import Comment from "../models/comment.model.js";
 import Post from "../models/post.model.js";
+import asyncHandler from "../util/asyncHandler.js";
+import AppError from "../util/AppError.js";
 
 /**
  * @desc    Handle comment for a post
@@ -7,61 +10,62 @@ import Post from "../models/post.model.js";
  * @access  Private
  */
 
-export async function createComment(req, res) {
-  try {
-    const userId = req.user?._id;
-    const { postId } = req.params;
-    const { content, parentComment } = req.body;
+export const createComment = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+  const { postId } = req.params;
+  const { content, parentComment } = req.body;
 
-    const post = await Post.findById(postId).exec();
+  const post = await Post.findById(postId).exec();
 
-    if(!post || post.isDeleted || post.isOrphaned){
-      return res.status(403).json({
-        success: false,
-        message: "Cannot comment on this post",
-      });
+  if(!post || post.isDeleted || post.isOrphaned){
+    throw new AppError("Cannot comment on this post", 403);
+  }
+
+  if(parentComment){
+    const parent = await Comment.findById(parentComment).exec();
+
+    if(!parent || parent.isDeleted || parent.postId.toString() !== postId){
+      throw new AppError("Invalid parent comment", 400)
     }
+  }
 
-    if(parentComment){
-      const parent = await Comment.findById(parentComment).exec();
+  const session = await mongoose.startSession();
 
-      if(
-        !parent ||
-        parent.isDeleted ||
-        parent.postId.toString() === postId
-      ){
-        return res.status(400).json({
-          success: false,
-          message: "Invalid parent comment",
-        });
-      }
-    }
+  try{
+    session.startTransaction();
 
-    const newComment = await Comment.create({
-      postId,
-      userId,
-      text: content,
-      parentCommentId: parentComment || null,
-    });
+    const newComment = await Comment.create(
+      [
+        {
+          postId,
+          userId,
+          text: content,
+          parentCommentId: parentComment || null,
+        },
+      ],
+      { session }
+    );
 
     await Post.updateOne(
       { _id: postId }, 
-      { $inc: { commentCount: 1 } }
+      { $inc: { commentCount: 1 } },
+      { session }
     );
+
+    await session.commitTransaction();e
 
     return res.status(201).json({
       success: true,
       data: newComment,
     });
 
-  } catch (error) {
-    console.error("Error creating new comment", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while creating comment",
-    });
+  }catch(error){
+    session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
   }
-}
+});
 
 /**
  * @desc    fetch comments for a post
