@@ -6,6 +6,7 @@ import { v2 as cloudinary } from "cloudinary";
 import checkToxicity from "../../Llama-setup/toxicity-check.js";
 import AppError from "../util/AppError.js";
 import { asyncHandler } from "../middleware/error.middleware.js";
+import logger from "../util/logger.js";
 
 /**
  * @desc    Create new post
@@ -19,6 +20,7 @@ export const createPost = asyncHandler(async (req, res) => {
   const { waveId } = req.params;
 
   let media = [];
+
   if (req.files && req.files.length > 0) {
     media = req.files.map((file) => ({
       url: file.path,
@@ -27,18 +29,54 @@ export const createPost = asyncHandler(async (req, res) => {
     }));
   }
 
-  const response = await Post.create({
-    userId,
-    waveId,
-    title,
-    content,
-    media,
-  });
+  const session = await mongoose.startSession()
 
-  return res.status(201).json({
-    success: true,
-    data: response,
-  });
+  try{
+    session.startTransaction();
+
+    const [post] = await Post.create(
+      [
+        {
+          userId,
+          waveId,
+          title,
+          content,
+          media,
+        },
+      ],
+      { session }
+    );
+
+    await session.commitTransaction();
+
+    return res.status(201).json({
+      success: true,
+      data: post,
+    });
+
+  }catch(error){
+    await session.abortTransaction();
+
+    for(const item of media){
+      if(item.public_id){
+        try{
+          await cloudinary.uploader.destroy(item.public_id, {
+            resource_type: item.type === "video" ? "video" : "image",
+          });
+        }catch(cleanupError){
+          logger.error({
+            message: "Cloudinary rollback failed",
+            publicId: item.public_id,
+            error: cleanupError.message,
+          });
+        }
+      }
+    }    
+
+    throw error;
+  } finally {
+    session.endSession();
+  }
 });
 
 /**
@@ -104,22 +142,6 @@ export const deletePost = asyncHandler(async (req, res)  => {
   const userId = req.user?._id;
   const { postId } = req.params;
 
-  const post = await Post.findById(postId).lean();
-
-  if (!post || post.isDeleted) {
-    throw new AppError("Post not found", 404);
-  }
-
-  if (post.userId.toString() !== userId.toString()) {
-    throw new AppError("Invalid User, You are not allowed to delete this post", 403);
-  }
-
-  const [commentCount, voteCount] = await Promise.all([
-    Comment.countDocuments({ postId }),
-    Vote.countDocuments({ targetId: postId, targetType: "Post" }),
-  ]);
-
-  const hasEngagement = commentCount > 0 || voteCount > 0;
   //Create new mongoose session
   const session = await mongoose.startSession();
   const now = new Date();
@@ -127,6 +149,24 @@ export const deletePost = asyncHandler(async (req, res)  => {
   try{
     session.startTransaction();
 
+
+    const post = await Post.findById(postId).session(session);
+
+    if (!post || post.isDeleted) {
+      throw new AppError("Post not found", 404);
+    }
+
+    if (post.userId.toString() !== userId.toString()) {
+      throw new AppError("Invalid User, You are not allowed to delete this post", 403);
+    }
+
+    const [commentCount, voteCount] = await Promise.all([
+      Comment.countDocuments({ postId }).session(session),
+      Vote.countDocuments({ targetId: postId, targetType: "Post" }).session(session),
+    ]);
+
+    const hasEngagement = commentCount > 0 || voteCount > 0;
+  
     //hard delete a post
     if(!hasEngagement){
       await Post.deleteOne({ _id: postId }, { session });
