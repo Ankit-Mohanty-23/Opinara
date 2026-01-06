@@ -16,20 +16,20 @@ export const postVote = asyncHandler(async (req, res) => {
   const { postId } = req.params;
   const { action } = req.body; // "upvote" | "downvote"
 
-  const post = await Post.findById(postId).lean();
-
-  if(!post){
-    throw new AppError("Post not found", 404);
-  }
-
-  if (post.isDeleted || post.isOrphaned) {
-    throw new AppError("Cannot vote on this post", 403);
-  }
-
   const session = await mongoose.startSession();
   let updatedVote = null;
 
   try{
+    const post = await Post.findById(postId).session(session);
+
+    if(!post){
+      throw new AppError("Post not found", 404);
+    }
+
+    if (post.isDeleted || post.isOrphaned) {
+      throw new AppError("Cannot vote on this post", 403);
+    }
+  
     session.startTransaction()
 
     const existingVote = await Vote.findOne(
@@ -140,22 +140,22 @@ export const commentVote = asyncHandler(async (req, res) => {
   const { commentId } = req.params;
   const { action } = req.body; // "upvote" | "downvote"
 
-  // 2. Fetch comment
-  const comment = await Comment.findById(commentId)
-  if (!comment || comment.isDeleted || comment.isOrphaned) {
-    throw new AppError("Cannot vote on this comment", 403);
-  }
-
-  // 3. Fetch parent post (to respect orphaned / deleted rules)
-  const post = await Post.findById(comment.postId)
-  if (!post || post.isDeleted || post.isOrphaned) {
-    throw new AppError("Cannot vote on this comment", 403);
-  }
-
   const session = await mongoose.startSession();
   let updatedVote = null;
 
   try{
+    // 2. Fetch comment
+    const comment = await Comment.findById(commentId).session(session);
+    if (!comment || comment.isDeleted || comment.isOrphaned) {
+      throw new AppError("Cannot vote on this comment", 403);
+    }
+
+    // 3. Fetch parent post (to respect orphaned / deleted rules)
+    const post = await Post.findById(comment.postId).session(session);
+    if (!post || post.isDeleted || post.isOrphaned) {
+      throw new AppError("Cannot vote on this comment", 403);
+    }
+
     session.startTransaction()
     // 4. Find existing vote
     const existingVote = await Vote.findOne(
