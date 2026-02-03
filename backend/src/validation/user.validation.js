@@ -7,7 +7,7 @@ const objectIdSchema = z
     message: "Invalid ObjectId format",
   });
 
-export const loginSchema = {
+export const signupSchema = {
   body: z.object({
     email: z.string().trim().min(1, "Email is required"),
     fullname: z.string().trim().min(1, "fullname is required"),
@@ -15,30 +15,26 @@ export const loginSchema = {
   }),
 };
 
-export const signupSchema = {
+export const loginSchema = {
   body: z.object({
-    email: z.email("Email is required"),
+    email: z.string().trim().email("Email is required"),
     password: z.string().min(8, "Password must be at least 8 characters"),
   }),
 };
 
-export const getUserIdSchema = {
-  user: z.object({
-    _id: objectIdSchema,
-  }),
-};
+export const getUserIdSchema = z.object({
+  userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid user id"),
+});
 
 export const getOtpSchema = {
   body: z.object({
-    email: z.email("Valid Email is required"),
+    email: z.string().trim().email("Valid Email is required"),
     fullname: z.string().trim().min(1, "Full name required"),
   }),
 };
 
 export const getBioSchema = {
-  user: z.object({
-    _id: objectIdSchema,
-  }),
+  userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid user id"),
 
   body: z.object({
     bio: z
@@ -49,14 +45,12 @@ export const getBioSchema = {
   }),
 };
 
-export const profilepicSchema = {
-  user: z.object({
-    _id: objectIdSchema,
-  }),
+export const profilepicSchema = z.object({
+  userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid user id"),
 
   file: z.object({
     originalname: z.string(),
     mimetype: z.enum(["image/jpeg", "image/png", "image/webp"]),
     size: z.number().max(5 * 1024 * 1024),
   }),
-};
+});
