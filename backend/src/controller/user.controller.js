@@ -58,15 +58,11 @@ export const login = asyncHandler(async (req, res) => {
     throw new AppError("Invalid Credentials", 401);
   }
 
-  const token = jwt.sign(
-    { id: user._id }, 
-    process.env.JWT_SECRET, 
-    {
-      expiresIn: "30d",
-      issuer: "opinara-api",
-      audience: "opinara-client",
-    }
-  );
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: "30d",
+    issuer: "opinara-api",
+    audience: "opinara-client",
+  });
 
   res.status(200).json({
     success: true,
@@ -81,20 +77,24 @@ export const login = asyncHandler(async (req, res) => {
  */
 
 export const getUser = asyncHandler(async (req, res) => {
-  const userId = req.user._id;
+  const userId = req.user?._id;
 
-  const UserData = await User.findById(userId)
-    .select(" fullname email wave profilePic bio isDeleted ")
+  const userData = await User.findById(userId)
+    .select("fullname email wave profile_pic bio isDeleted")
     .lean()
     .exec();
 
-  if (!UserData) {
+  if (!userData) {
     throw new AppError("User not found", 404);
+  }
+
+  if (userData.isDeleted) {
+    throw new AppError("Account has been deactivated", 403);
   }
 
   res.status(200).json({
     success: true,
-    data: UserData,
+    data: userData,
   });
 });
 
@@ -127,18 +127,27 @@ export const addBio = asyncHandler(async (req, res) => {
   const { bio } = req.body;
 
   const newBio = await User.findByIdAndUpdate(
-    userId,
-    { bio }, 
-    { new: true, runValidators: true },
+    {
+      _id: userId,
+      isDeleted: false,
+    },
+    {
+      $set: { bio },
+    },
+    {
+      runValidators: true,
+      new: false,
+    }
   );
 
   if (!newBio) {
-    throw new AppError("User not found", 404);
+    throw new AppError("User not found or account deactivated", 404);
   }
 
   res.status(200).json({
     success: true,
-    message: "User bio updated",
+    message: "User bio updated successfully",
+    data: newBio.bio,
   });
 });
 
@@ -151,11 +160,11 @@ export const addBio = asyncHandler(async (req, res) => {
 export const addProfilePic = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
-  const session = mongoose.startSession();
+  const session = await mongoose.startSession();
   let oldProfilePic = null;
 
-  try{
-    session.startTransaction();
+  try {
+    await session.startTransaction();
 
     const user = await User.findById(userId).session(session);
     if (!user) {
@@ -174,8 +183,8 @@ export const addProfilePic = asyncHandler(async (req, res) => {
 
     await session.commitTransaction();
 
-    if(oldProfilePic?.public_id){
-      try{
+    if (oldProfilePic?.public_id) {
+      try {
         await cloudinary.uploader.destroy(oldProfilePic.public_id);
       } catch (err) {
         logger.error({
@@ -189,13 +198,13 @@ export const addProfilePic = asyncHandler(async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Profile picture updated successfully",
-      profile_pic: user.profile_pic,
+      data: user.profile_pic,
     });
-  } catch(error) {
+  } catch (error) {
     await session.abortTransaction();
 
-    if(req.file?.filename) {
-      try{
+    if (req.file?.filename) {
+      try {
         await cloudinary.uploader.destroy(req.file.filename);
       } catch (cleanupError) {
         logger.error({
@@ -208,7 +217,7 @@ export const addProfilePic = asyncHandler(async (req, res) => {
 
     throw error;
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 });
 
@@ -224,7 +233,7 @@ export const deleteUser = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
   const now = new Date();
 
-  try{
+  try {
     session.startTransaction();
 
     const user = await User.findById(userId).session(session);
@@ -262,7 +271,6 @@ export const deleteUser = asyncHandler(async (req, res) => {
      * CASE 2: Has activity → Soft delete + cascade hide
      */
 
-
     await User.updateOne(
       { _id: userId },
       { $set: { isDeleted: true, deletedAt: now } },
@@ -278,17 +286,17 @@ export const deleteUser = asyncHandler(async (req, res) => {
       { userId, isDeleted: false },
       { $set: { isDeleted: true, deletedAt: now } }
     );
-    
+
     await session.commitTransaction();
 
     return res.status(200).json({
       success: true,
       message: "User account is deleted successfully",
     });
-  }catch(error){
+  } catch (error) {
     await session.abortTransaction();
     throw error;
-  } finally{
+  } finally {
     session.endSession();
   }
 });
