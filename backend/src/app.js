@@ -4,11 +4,13 @@ import postRouter from "./routes/post.route.js";
 import logger from "./util/logger.js";
 import cors from "cors";
 import passport from "passport";
-import session from "express-session";
-import setupUser from "./services/passport.js";
+import cookieParser from "cookie-parser";
+import setupPassport from "./services/passport.js";
 import authRouter from "./controller/google.auth.controller.js";
+import waveRouter from "./routes/wave.route.js";
+import commentRouter from "./routes/comment.routes.js";
+import voteRouter from "./routes/vote.routes.js";
 import globalErrorHandler from "./middleware/error.middleware.js";
-import AppError from "./util/AppError.js";
 
 console.log = (...args) => logger.debug(args.join(" "));
 console.error = (...args) => logger.error(args.join(" "));
@@ -26,25 +28,15 @@ app.use(
 );
 
 app.use(express.json());
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET, // keep secret in .env in production
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 day
-    },
-  })
-);
-
+app.use(cookieParser());
 app.use(passport.initialize());
-app.use(passport.session());
-
-// Register Google OAuth strategy
-setupUser();
+setupPassport();
 
 app.use("/user", LoginRouter);
 app.use("/posts", postRouter);
+app.use("/wave", waveRouter);
+app.use("/wave", commentRouter);
+app.use("/wave", voteRouter);
 app.use("/auth", authRouter);
 
 app.use(globalErrorHandler);
