@@ -12,29 +12,39 @@ const PORT = process.env.PORT;
 const MONGO_URL = process.env.MONGO_URL;
 
 if (cluster.isPrimary) {
+  let readyWorker = 0;
   console.log(`Primary ${process.pid} is running`);
 
   for (let i = 0; i < totalCPUs; i++) {
     cluster.fork();
   }
 
+  cluster.on("message", (worker, message) => {
+    if (message?.type === "WORKER_READY") {
+      readyWorker++;
+
+      if (readyWorker === totalCPUs) {
+        console.info(`Server is listening to Port: ${PORT} \nAll ${totalCPUs} workers are online and serving traffic`);
+      }
+    }
+  });
+
   cluster.on("exit", (worker, code, signal) => {
-    console.log(`Worker ${worker.process.pid} died. \nRestarting...`);
+    console.warn(
+      `Worker ${worker.process.pid} died (code= ${code}, signal= ${signal}). \nRestarting...`
+    );
+    readyWorker--;
     cluster.fork();
   });
 } else {
-
   (async () => {
-    try{
-        const conn = await mongoose.connect(MONGO_URL);
-        console.log(`Worker ${process.pid}: Mongodb connected to ${conn.connection.name}`);
-
-        app.listen(PORT, () => {
-            console.log(`Worker ${process.pid}: app is listening to ${PORT} Port`);
-        });
-    }catch(err){
-        console.error(`Worker ${process.pid}: Failed to connect to DB`, err);
-        process.exit(1);
+    try {
+      await mongoose.connect(MONGO_URL);
+      process.send?.({ type: "WORKER_READY", pid: process.pid });
+      app.listen(PORT);
+    } catch (err) {
+      console.error(`Worker ${process.pid}: Failed to connect to DB`, err);
+      process.exit(1);
     }
   })();
 }
