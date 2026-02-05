@@ -1,16 +1,19 @@
 import { z } from "zod";
 import mongoose from "mongoose";
 
-const objectIdSchema = z.string().refine(
-    (id) => mongoose.Schema.Types.ObjectId(id), {
-        message: "Invalid ObjectId format",
-    }
-);
+const objectIdSchema = z.instanceof(mongoose.Types.ObjectId);
+const waveNameRegex = /^[a-z0-9._]+$/;
 
 export const createWaveSchema = {
     body: z.object({
-        name: z.string().trim().min(1, "Wave name is required"),
-        description: z.string().trim(),
+        name: z
+            .string()
+            .min(1, "Wave name is required")
+            .regex(
+                waveNameRegex,
+                "Wave name can contain only small character, numbers, underscore (_) and dot (.) with no spaces"
+            ),
+        description: z.string().trim().optional(),
     }),
     user: z.object({
         _id: objectIdSchema,
