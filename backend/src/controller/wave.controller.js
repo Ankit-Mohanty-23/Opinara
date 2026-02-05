@@ -1,10 +1,11 @@
 import mongoose from "mongoose";
 import Wave from "../models/wave.model.js";
-import { V2 as cloudinary } from "cloudinary";
+import Membership from "../models/membership.model.js";
+import { v2 as cloudinary } from "cloudinary";
 import Post from "../models/post.model.js";
-import summarize from "/Llama-setup/summarizer.js";
+import { summarize } from "../../Llama-setup/summarizer.js";
 import AppError from "../util/AppError.js";
-import { asyncHandler } from "../middleware/error.middleware.js";
+import { asyncHandler } from "../util/asyncHandler.js";
 import logger from "../util/logger.js";
 
 /**
@@ -14,20 +15,112 @@ import logger from "../util/logger.js";
  */
 
 export const createWave = asyncHandler(async (req, res) => {
-  const userId = req.user?._id;
-  const { name, description } = req.body;
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  const wave = await Wave.create({
-    name,
-    description,
-    createdBy: userId,
-  });
+  try{
+    const userId = req.user?._id;
+    const { name, description } = req.body;
 
-  res.status(201).json({
-    success: true,
-    data: wave,
-  });
+    const [wave] = await Wave.create([{
+      name,
+      description,
+      createdBy: userId,
+    }],
+    { session }
+  );
+
+    await Membership.create(
+      [{
+        waveId: wave._id,
+        userId,
+        role: "admin",
+      }],
+      { session }
+    )
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(201).json({
+      success: true,
+      data: wave,
+    });
+
+  }catch(error){
+
+    if (error.code === 11000) {
+      throw new AppError("Wave name already exists", 409);
+    }
+
+    await session.abortTransaction();
+    session.endSession();
+    throw error;
+  }
 });
+
+/**
+ * @desc    get user joined wave using ID
+ * @route   GET /waves
+ * @access  Public
+ */
+
+export const getWaves = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+
+  const membership = await Membership.find({ 
+    userId: userId,
+    status: "active",
+  }).populate({
+    path: "wave",
+    select: "name coverImage membersCount createdAt",
+  }).lean();
+
+  const waves = membership.map(m => m.waveId);
+
+  res.status(200).json({
+    success: true,
+    count: waves.length,
+    data: waves
+  })
+})
+
+/**
+ * @desc    Search for wave using name
+ * @route   GET /wave/?q=wave-name
+ * @access  Public
+ */
+
+export const SearchWave = asyncHandler(async (req, res) => {
+  let { q } = req.query;
+
+  if(!q || q.trim() === ""){
+    return res.json({
+      success: true,
+      count: 0,
+      data: [],
+    })
+  }
+
+  q = q.toLowerCase().trim();
+
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const waves = await Wave.find({
+    name:  { $regex: `^${escaped}` },
+    isDeleted: false,
+  })
+    .select("name membersCount")
+    .sort({ membersCount: -1})
+    .limit(8)
+    .lean();
+
+    res.json({
+      success: true,
+      count: waves.length,
+      data: waves
+    });
+})
 
 /**
  * @desc    Get all posts
@@ -45,7 +138,7 @@ export const getWavePosts = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(10)
-    .select("title content media") // field selection
+    .select("title content media")
     .populate({
       path: "userId",
       select: "fullname profilePic",
@@ -62,6 +155,12 @@ export const getWavePosts = asyncHandler(async (req, res) => {
     data: posts,
   });
 });
+
+/**
+ * @desc    Set Location for a wave
+ * @route   GET /wave/location/:waveId
+ * @access  Public
+ */
 
 export const getLocation = asyncHandler(async (req, res) => {
   const { waveId } = req.params;
@@ -114,10 +213,7 @@ export const deleteWave = asyncHandler(async (req, res) => {
     }
 
     if (wave.createdBy.toString() !== userId.toString()) {
-      throw new AppError(
-        "Invalid user. You are not allowed to delete this wave",
-        403
-      );
+      throw new AppError("Invalid user. You are not allowed to delete this wave",403);
     }
 
     const postCount = await Post.countDocuments({ waveId }).session(session);
