@@ -35,12 +35,15 @@ const waveSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    members: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    membersCount: {
+      type: Number,
+      default: 1,
+    },
     location: {
       type: {
         type: String,
@@ -69,7 +72,7 @@ const waveSchema = new mongoose.Schema(
       index: true,
     },
     deletedAt: {
-      type: Boolean,
+      type: Date,
       default: null,
     },
     postCount: {
@@ -82,19 +85,16 @@ const waveSchema = new mongoose.Schema(
   }
 );
 
-waveSchema.pre("save", function(next){
-  if(
-    this.createdBy && 
-    !this.members.some(
-      (id) => id.toString() === this.createdBy.toString
-    )
-  ){
-    this.members.push(this.createdBy);
+waveSchema.index(
+  { name: 1, isDeleted: 1 },
+  {
+    unique: true,
+    collation: { locale: "en", strength: 2 }
   }
-  next();
-});
-
-waveSchema.index({ location: "2dsphere" });
-waveSchema.index({ createdAt: -1 });
+);
+waveSchema.index(
+  { createdAt: -1 },
+  { partialFilterExpression: { isDeleted: false } }
+);
 
 export default mongoose.model("Wave", waveSchema);
