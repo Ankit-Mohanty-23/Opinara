@@ -1,8 +1,9 @@
 import mongoose from "mongoose";
 import Wave from "../models/wave.model.js";
 import Membership from "../models/membership.model.js";
-import { v2 as cloudinary } from "cloudinary";
 import Post from "../models/post.model.js";
+import User from "../models/user.model.js";
+import { v2 as cloudinary } from "cloudinary";
 import { summarize } from "../../Llama-setup/summarizer.js";
 import AppError from "../util/AppError.js";
 import { asyncHandler } from "../util/asyncHandler.js";
@@ -26,6 +27,7 @@ export const createWave = asyncHandler(async (req, res) => {
       name,
       description,
       createdBy: userId,
+      owner: userId,
     }],
     { session }
   );
@@ -60,8 +62,8 @@ export const createWave = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    get user joined wave using ID
- * @route   GET /waves
+ * @desc    Get the waves user have joined
+ * @route   GET /user-waves
  * @access  Public
  */
 
@@ -123,7 +125,7 @@ export const SearchWave = asyncHandler(async (req, res) => {
 })
 
 /**
- * @desc    Get all posts
+ * @desc    Get all posts of a wave
  * @route   GET /wave/:waveId/posts?page=1
  * @access  Public
  */
@@ -204,55 +206,126 @@ export const deleteWave = asyncHandler(async (req, res) => {
   const now = new Date();
 
   try {
-    session.startTransaction();
+    await session.withTransaction(async () => {
 
-    const wave = await Wave.findById(waveId).session(session);
+      const wave = await Wave.findById(waveId).session(session);
 
-    if (!wave || wave.isDeleted) {
-      throw new AppError("Wave not found", 404);
-    }
+      if (!wave || wave.isDeleted) {
+        throw new AppError("Wave not found", 404);
+      }
 
-    if (wave.createdBy.toString() !== userId.toString()) {
-      throw new AppError("Invalid user. You are not allowed to delete this wave",403);
-    }
+      if (wave.owner.equals(userId)) {
+        throw new AppError("Invalid user. You are not allowed to delete this wave",403);
+      }
 
-    const postCount = await Post.countDocuments({ waveId }).session(session);
+      const hasPost = await Post.exists({ waveId }).session(session);
 
-    if (postCount === 0) {
-      await Wave.deleteOne({ _id: waveId }, { session });
+      if (!hasPost) {
+        await Membership.deleteMany(
+          { waveId },
+          { session }
+        );
 
-      await session.commitTransaction();
+        await Wave.deleteOne(
+          { _id: waveId }, 
+          { session }
+        );
 
-      return res.status(200).json({
-        success: true,
-        message: "Wave permanently deleted (no posts found)",
-      });
-    }
+        return res.status(200).json({
+          success: true,
+          message: "Wave permanently deleted (no posts found)",
+        });
+      }
 
-    await Wave.updateOne(
-      { _id: waveId },
-      { $set: { isDeleted: true, deletedAt: now } },
-      { session }
-    );
+      await Wave.updateOne(
+        { _id: waveId },
+        { $set: { isDeleted: true, deletedAt: now } },
+        { session }
+      );
 
-    await Post.updateMany(
-      { waveId },
-      { $set: { waveId: null, isOrphaned: true } },
-      { session }
-    );
+      await Membership.updateMany(
+        { waveId, status: "active" },
+        {
+          status: "removed",
+          moderation: {
+            actionBy: userId,
+            actionAt: now,
+            actionType: "wave_deleted",
+            actionReason: "Wave was deleted by admin"
+          }
+        },
+        { session }
+      );
+    });
 
-    await session.commitTransaction();
+    await session.endSession();
 
     return res.status(200).json({
       success: true,
       message: "Wave deleted and posts preserved as orphaned content",
     });
+
   } catch (error) {
-    await session.abortTransaction();
+    await session.endSession();
     throw error;
-  } finally {
-    session.endSession();
   }
+});
+
+/**
+ * @desc    Get Wave Members
+ * @route   GET /waves/:waveId/members
+            ?page=1&limit=20&role=moderator&status=active&search=ankit
+ * @access  Public
+ */
+
+export const getMembers = asyncHandler(async (req, res) => {
+  const { waveId } = req.params.waveId;
+
+  let{
+    page = 1,
+    limit = 20,
+    role, 
+    status = "active",
+    search,
+  } = req.query;
+
+  page = Math.max(1, parseInt(page));
+  limit = Math.min(50, parseInt(limit));
+
+  const filter = {
+    waveId,
+    ...(role && { role }),
+    ...(status && { status })
+  };
+
+  if(search){
+    const users = await User.find({
+      name: { $regex: search, $options: "i" }
+    }).select("_id");
+
+    filter.userId = { $in: users.map(u => u._id) };
+  }
+
+  const members = await Membership.find(filter)
+    .select("userId role status")
+    .populate({
+      path: "User",
+      select: "fullname profile_pic bio"
+    })
+    .sort({ createdAt: -1 })
+    .skip((page - 1) *limit)
+    .limit(limit)
+    .lean();
+
+    const total =  await Membership.countDocuments(filter);
+
+    return res.status(200).json({
+      success: true,
+      page,
+      totalPage: Math.ceil(total/limit),
+      totalMembers: total,
+      data: members
+    });
 });
 
 /**
