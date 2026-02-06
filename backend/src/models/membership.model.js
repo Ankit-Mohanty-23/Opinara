@@ -46,6 +46,7 @@ const membershipSchema = new mongoose.Schema(
           "harassment",
           "hate_speech",
           "policy_violation",
+          "wave_deleted",
           "other",
         ],
         default: null,
