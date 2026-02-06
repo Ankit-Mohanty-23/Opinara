@@ -1,5 +1,6 @@
 import Membership from "../models/membership.model.js";
-import Post from "../models/Post.model.js";
+import Post from "../models/post.model.js";
+import Wave from "../models/wave.model.js";
 import Comment from "../models/comment.model.js";
 import { asyncHandler } from "../util/asyncHandler.js";
 import AppError from "../util/AppError.js";
@@ -57,7 +58,7 @@ export const setMembership = asyncHandler(async (req, res) => {
 
 /**
  * @desc    Ban a member by admin
- * @route   POST /member/banned/:waveId/:target
+ * @route   POST /member/banned/:waveId/:memberId
  * @access  Public
  */
 
@@ -119,14 +120,14 @@ export const banMembership = asyncHandler(async (req, res) => {
             message: "Member banned successfully",
         });
     }catch(error){
-        session.endSession();
+        await session.endSession();
         throw error;
     }
 });
 
 /**
  * @desc    temporarily remove member
- * @route   POST /member/remove/:waveId/:target
+ * @route   POST /member/remove/:waveId/:memberId
  * @access  Public
  */
 
@@ -188,7 +189,7 @@ export const removeMember = asyncHandler(async (req, res) => {
             await targetMember.save({ session });
         });
 
-        session.endSession();
+        await session.endSession();
 
         return res.status(200).json({
             success: true,
@@ -196,13 +197,13 @@ export const removeMember = asyncHandler(async (req, res) => {
         });
 
     }catch(error){
-        session.endSession();
+        await session.endSession();
         throw error;
     }
 });
 
 /**
- * @desc     Member leaves voluntarily
+ * @desc    Member leaves voluntarily
  * @route   POST /member/leave/:waveId
  * @access  Public
  */
@@ -244,7 +245,7 @@ export const leaveMember = asyncHandler(async (req, res) => {
             const hasComments = await Comment.exists({ userId })
             .session(session);
 
-            const hasContribution = hasPost || hasComment;
+            const hasContribution = hasPost || hasComments;
 
             if(!hasContribution){
                 await Membership.deleteOne({
@@ -264,7 +265,7 @@ export const leaveMember = asyncHandler(async (req, res) => {
             await membership.save({ session });
         });
 
-        session.endSession();
+        await session.endSession();
 
         return res.status(201).json({
             success: true,
@@ -272,8 +273,157 @@ export const leaveMember = asyncHandler(async (req, res) => {
         });
 
     }catch(error){
+        await session.endSession();
+        throw error;
+    }
+});
+
+/**
+ * @desc    Member status change by Admin
+ * @route   PATCH /waves/:waveId/transfer-admin/:memberId
+ * @access  Public
+ */
+
+export const transferAdmin = asyncHandler(async (req, res) => {
+
+    if (!req.user?._id) {
+        throw new AppError("Unauthorized", 401);
+    }
+
+    const actingUserId = req.user._id;
+    const { waveId, memberId } = req.params;
+
+    if (actingUserId.equals(memberId)) {
+        throw new AppError("You are already the owner", 400);
+    }
+
+    const session = await mongoose.startSession();
+
+    try {
+
+        await session.withTransaction(async () => {
+
+            const wave = await Wave.findById(waveId).session(session);
+
+            if (!wave) {
+                throw new AppError("Wave not present", 404);
+            }
+
+            if (!wave.owner.equals(actingUserId)) {
+                throw new AppError("Only the owner can transfer admin", 403);
+            }
+
+            const actingMembership = await Membership.findOne({
+                waveId,
+                userId: actingUserId,
+                role: "admin",
+                status: "active"
+            }).session(session);
+
+            if (!actingMembership) {
+                throw new AppError("Owner is not an active admin", 403);
+            }
+
+            const targetMember = await Membership.findOne({
+                userId: memberId,
+                waveId,
+                status: "active"
+            }).session(session);
+
+            if (!targetMember) {
+                throw new AppError("Target is not an active member", 404);
+            }
+
+            if (targetMember.role === "admin") {
+                throw new AppError("User is already admin", 400);
+            }
+
+            actingMembership.role = "member";
+            await actingMembership.save({ session });
+
+            targetMember.role = "admin";
+            await targetMember.save({ session });
+
+            wave.owner = memberId;
+            await wave.save({ session });
+
+        });
+
+        session.endSession();
+
+        return res.status(200).json({
+            success: true,
+            message: "Ownership transferred successfully",
+        });
+
+    } catch (error) {
+
         session.endSession();
         throw error;
     }
 });
 
+/**
+ * @desc    Promote/Demote member status to moderator status
+ * @route   PATCH /waves/:waveId/members/:memberId/role
+ * @access  Public
+ */
+
+export const updateModeratorRole = asyncHandler(async (req, res) => {
+    const { waveId, memberId } = req.params;
+    const userId = req.user?._id;
+    const { role } = req.body;
+    
+    const session = await mongoose.startSession();
+    let updatedMember;
+
+    try{
+        await session.withTransaction(async () => {
+            const wave = await Wave.findById(waveId).session(session);
+
+            if(!wave){
+                throw new AppError("Wave not found", 404);
+            }
+
+            if(!wave.owner.equals(userId)){
+                throw new AppError("Only the admin can change moderator roles", 403);
+            }
+
+            targetMember = await Membership.findOne({
+                waveId,
+                userId: memberId,
+                status: "active",
+            }).session(session);
+
+            if (!targetMember) {
+                throw new AppError("Member not found", 404);
+            }
+             
+            if (wave.owner.equals(memberId) || targetMember.role === "admin") {
+                throw new AppError("Admin/Owner role cannot be modified", 400);
+            }
+
+            if (targetMember.role === role) {
+                throw new AppError("User already has this role", 400);
+            }
+
+            const previousRole = targetMember.role;
+
+            targetMember.role = role;
+            await targetMember.save({ session });
+
+            updatedMember = targetMember;
+        })
+
+        await session.endSession();
+
+        return res.status(200).json({
+            success: true,
+            data: updatedMember.role,
+        });
+
+    }catch(error){
+        await session.endSession();
+        throw error;
+    }
+})
