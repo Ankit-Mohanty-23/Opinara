@@ -14,6 +14,11 @@ export default function globalErrorHandler(err, req, res, next){
         error = new AppError(`${field} already exists`, 409);
     }
 
+    if(error.name === "ValidationError"){
+        const messages = Object.values(error.errors).map((e) => e.message).join(", ");
+        error = new AppError(messages || "Validation failed", 400);
+    }
+
     if(error.name === "DocumentNotFoundError"){
         error = new AppError("Resource not found", 404);
     }
