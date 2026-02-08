@@ -5,7 +5,7 @@ import Post from "../models/post.model.js";
 import { v2 as cloudinary } from "cloudinary";
 import checkToxicity from "../../Llama-setup/toxicity-check.js";
 import AppError from "../util/AppError.js";
-import { asyncHandler } from "../middleware/error.middleware.js";
+import { asyncHandler } from "../util/asyncHandler.js";
 import logger from "../util/logger.js";
 
 /**
