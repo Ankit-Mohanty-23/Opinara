@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import User from "../models/user.model.js";
 import jwt from "jsonwebtoken";
-import sendMail from "../services/sendEmails.js";
+import sendMail from "../services/mail.service.js";
 import { v2 as cloudinary } from "cloudinary";
 import Post from "../models/post.model.js";
 import Comment from "../models/comment.model.js";
