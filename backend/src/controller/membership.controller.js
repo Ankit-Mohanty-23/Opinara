@@ -5,6 +5,7 @@ import Comment from "../models/comment.model.js";
 import { asyncHandler } from "../util/asyncHandler.js";
 import AppError from "../util/AppError.js";
 import mongoose from "mongoose";
+import logModerationEvent from "../services/moderationLog.service.js";
 
 /**
  * @desc    Create new wave-user connection
@@ -13,48 +14,90 @@ import mongoose from "mongoose";
  */
 
 export const setMembership = asyncHandler(async (req, res) => {
-    const { waveId } = req.params.waveId;
+
+    const { waveId } = req.params;
     const memberId = req.user._id;
 
-    const membership = await Membership.findOne({
-        userId: memberId,
-        waveId,
-    }).lean();
+    const session = await mongoose.startSession();
 
-    if(membership?.status === "banned"){
-        throw new AppError("You are banned from this wave", 403);
-    }
+    try {
 
-    if(membership?.status === "removed" || membership?.status === "left"){
-        membership.status = "active";
-        membership.leftAt = null;
-        membership.moderation = null;
+        let createdMember;
 
-        await membership.save();
-        return res.status(200).json({
-            success: true,
-            message: "Rejoined wave,"
+        await session.withTransaction(async () => {
+
+            const membership = await Membership.findOne({
+                userId: memberId,
+                waveId,
+            }).session(session);
+
+            if (membership?.status === "banned") {
+                throw new AppError(
+                    "You are banned from this wave",
+                    403
+                );
+            }
+
+            if (membership &&
+                ["removed", "left"].includes(membership.status)) {
+
+                membership.status = "active";
+                membership.leftAt = null;
+                membership.moderation = null;
+
+                await membership.save({ session });
+
+                await logModerationEvent({
+                    session,
+                    waveId,
+                    actorId: memberId,
+                    targetId: memberId,
+                    action: "JOIN",
+                    metadata: { rejoin: true }
+                });
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Rejoined wave",
+                });
+            }
+
+            if (membership?.status === "active") {
+                return res.status(200).json({
+                    success: true,
+                    message: "Already a member",
+                });
+            }
+
+            createdMember = await Membership.create([{
+                userId: memberId,
+                waveId,
+                role: "member",
+            }], { session });
+
+            await logModerationEvent({
+                session,
+                waveId,
+                actorId: memberId,
+                targetId: memberId,
+                action: "JOIN"
+            });
+
         });
-    }
 
-    if (membership?.status === "active") {
-        return res.status(200).json({
+        session.endSession();
+
+        return res.status(201).json({
             success: true,
-            message: "Already a member",
+            data: createdMember[0].status,
         });
+
+    } catch (error) {
+
+        session.endSession();
+        throw error;
     }
-
-    const member = await Membership.create({
-        userId: memberId,
-        waveId,
-        role: "member",
-    })
-
-    return res.status(201).json({
-        success: true,
-        data: member.status,
-    })
-})
+});
 
 /**
  * @desc    Ban a member by admin
@@ -285,11 +328,6 @@ export const leaveMember = asyncHandler(async (req, res) => {
  */
 
 export const transferAdmin = asyncHandler(async (req, res) => {
-
-    if (!req.user?._id) {
-        throw new AppError("Unauthorized", 401);
-    }
-
     const actingUserId = req.user._id;
     const { waveId, memberId } = req.params;
 
@@ -375,7 +413,7 @@ export const updateModeratorRole = asyncHandler(async (req, res) => {
     const { role } = req.body;
     
     const session = await mongoose.startSession();
-    let updatedMember;
+    let updatedMember, previousRole;
 
     try{
         await session.withTransaction(async () => {
@@ -407,7 +445,7 @@ export const updateModeratorRole = asyncHandler(async (req, res) => {
                 throw new AppError("User already has this role", 400);
             }
 
-            const previousRole = targetMember.role;
+            previousRole = targetMember.role;
 
             targetMember.role = role;
             await targetMember.save({ session });
@@ -419,7 +457,10 @@ export const updateModeratorRole = asyncHandler(async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: updatedMember.role,
+            data: {
+                new: updatedMember.role,
+                old: previousRole.role,
+            }
         });
 
     }catch(error){
