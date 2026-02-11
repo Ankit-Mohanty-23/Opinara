@@ -154,6 +154,18 @@ export const banMembership = asyncHandler(async (req, res) => {
 
             await targetMember.save({ session });
 
+            await logModerationEvent({
+                session,
+                waveId,
+                actorId: actingUserId,
+                targetId: memberId,
+                action: "BAN",
+                metadata: {
+                    actionType: req.body.actionType || "other",
+                    actionReason: req.body.actionReason || null,
+                }
+            });            
+
         });
 
         await session.endSession();
@@ -174,7 +186,7 @@ export const banMembership = asyncHandler(async (req, res) => {
  * @access  Public
  */
 
-export const removeMember = asyncHandler(async (req, res) => {
+export const removeMembership = asyncHandler(async (req, res) => {
     const { memberId, waveId } = req.params;
     const actingUserId = req.user._id;
 
@@ -184,12 +196,12 @@ export const removeMember = asyncHandler(async (req, res) => {
         member: 1
     };
 
-    const session = mongoose.startSession();
+    const session = await mongoose.startSession();
 
     try{
         await session.withTransaction(async () => {
             
-            const actingMember = await Membership.find({
+            const actingMember = await Membership.findOne({
                 waveId,
                 userId: actingUserId,
                 status: "active"
@@ -203,7 +215,7 @@ export const removeMember = asyncHandler(async (req, res) => {
                 throw new AppError("Insufficient permissions", 403);
             }
 
-            const targetMember = await Membership.find({
+            const targetMember = await Membership.findOne({
                 waveId,
                 userId: memberId,
                 status: "active",
@@ -230,6 +242,19 @@ export const removeMember = asyncHandler(async (req, res) => {
             };
 
             await targetMember.save({ session });
+
+            await logModerationEvent({
+                session,
+                waveId,
+                actorId: actingUserId,
+                targetId: memberId,
+                action: "REMOVE",
+                metadata: {
+                    actionType: req.body.actionType || "other",
+                    actionReason: req.body.actionReason || null,
+                }
+            });
+            
         });
 
         await session.endSession();
@@ -251,7 +276,7 @@ export const removeMember = asyncHandler(async (req, res) => {
  * @access  Public
  */
 
-export const leaveMember = asyncHandler(async (req, res) => {
+export const leaveMembership = asyncHandler(async (req, res) => {
     const userId = req.user?._id;
     const waveId = req.params.waveId;
 
@@ -295,6 +320,14 @@ export const leaveMember = asyncHandler(async (req, res) => {
                     _id: membership._id
                 }).session(session);
 
+                await logModerationEvent({
+                    session,
+                    waveId,
+                    actorId: userId,
+                    targetId: userId,
+                    action: "LEAVE_PERMANENT",
+                });
+
                 return res.status(200).json({
                     success: true,
                     message: "you have left the wave permanently",
@@ -306,6 +339,15 @@ export const leaveMember = asyncHandler(async (req, res) => {
             membership.moderation = null;
 
             await membership.save({ session });
+
+            await logModerationEvent({
+                session,
+                waveId,
+                actorId: userId,
+                targetId: userId,
+                action: "LEAVE",
+            });
+            
         });
 
         await session.endSession();
@@ -385,6 +427,14 @@ export const transferAdmin = asyncHandler(async (req, res) => {
             wave.owner = memberId;
             await wave.save({ session });
 
+            await logModerationEvent({
+                session,
+                waveId,
+                actorId: actingUserId,
+                targetId: memberId,
+                action: "TRANSFER_ADMIN",
+            });            
+
         });
 
         session.endSession();
@@ -427,7 +477,7 @@ export const updateModeratorRole = asyncHandler(async (req, res) => {
                 throw new AppError("Only the admin can change moderator roles", 403);
             }
 
-            targetMember = await Membership.findOne({
+            const targetMember = await Membership.findOne({
                 waveId,
                 userId: memberId,
                 status: "active",
@@ -449,6 +499,18 @@ export const updateModeratorRole = asyncHandler(async (req, res) => {
 
             targetMember.role = role;
             await targetMember.save({ session });
+
+            await logModerationEvent({
+                session,
+                waveId,
+                actorId: userId,
+                targetId: memberId,
+                action: "ROLE_UPDATE",
+                metadata: {
+                    from: previousRole,
+                    to: role,
+                }
+            });            
 
             updatedMember = targetMember;
         })
