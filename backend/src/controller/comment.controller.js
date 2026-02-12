@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import Comment from "../models/comment.model.js";
 import Post from "../models/post.model.js";
-import asyncHandler from "../util/asyncHandler.js";
+import { asyncHandler } from "../util/asyncHandler.js";
 import AppError from "../util/AppError.js";
 
 /**
