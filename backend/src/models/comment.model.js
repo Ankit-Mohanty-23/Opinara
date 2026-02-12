@@ -41,4 +41,6 @@ const commentSchema = new mongoose.Schema(
 );
 
 commentSchema.index({ createdAt: -1 });
+commentSchema.index({ waveId: 1, author: 1 });
+
 export default mongoose.model("Comment", commentSchema);
