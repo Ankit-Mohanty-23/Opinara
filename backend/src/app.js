@@ -5,7 +5,7 @@ import logger from "./util/logger.js";
 import cors from "cors";
 import passport from "passport";
 import cookieParser from "cookie-parser";
-import setupPassport from "./services/passport.js";
+import setupPassport from "./services/passport.service.js";
 import authRouter from "./controller/google.auth.controller.js";
 import waveRouter from "./routes/wave.route.js";
 import commentRouter from "./routes/comment.routes.js";
