@@ -3,7 +3,7 @@ import Vote from "../models/vote.model.js";
 import Post from "../models/post.model.js";
 import Comment from "../models/comment.model.js";
 import AppError from "../util/AppError.js";
-import { asyncHandler } from "../middleware/error.middleware.js";
+import { asyncHandler } from "../util/asyncHandler.js";
 
 /**
  * @desc    Handle Vote for a post
