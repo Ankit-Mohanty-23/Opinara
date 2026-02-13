@@ -73,45 +73,100 @@ export const createComment = asyncHandler(async (req, res) => {
  * @access  Public
  */
 
-export async function getRootComments(req, res) {
-  try {
-    const postId = req.params;
-    const limit = Number(req.query.limit) || 20;
+export const getRootComments = asyncHandler(async (req, res) => {
+  const { postId } = req.params;
+  const sort = req.query.sort || "new";
+  const limit = Math.min(Number(req.query.limit) || 20, 50);
+
+  let responsePayload;
+
+  if (sort === "new") {
+    const cursor = req.query.cursor;
+
+    let matchStage = {
+      postId: new mongoose.Types.ObjectId(postId),
+      parentCommentId: null,
+      isDeleted: false,
+    };
+
+    if (cursor) {
+      const cursorDoc = await Comment.findById(cursor)
+        .select("createdAt")
+        .lean();
+
+      if (cursorDoc) {
+        matchStage.$or = [
+          { createdAt: { $lt: cursorDoc.createdAt } },
+          {
+            createdAt: cursorDoc.createdAt,
+            _id: { $lt: cursorDoc._id },
+          },
+        ];
+      }
+    }
+
+    const comments = await Comment.aggregate([
+      { $match: matchStage },
+      { $sort: { createdAt: -1, _id: -1 } },
+      { $limit: limit + 1 },
+    ]);
+
+    let nextCursor = null;
+    const hasNextPage = comments.length > limit;
+
+    if (hasNextPage) {
+      nextCursor = comments[limit - 1]._id;
+      comments.pop();
+    }
+
+    responsePayload = {
+      paginationType: "cursor",
+      nextCursor,
+      hasNextPage,
+      results: comments.length,
+      data: comments,
+    };    
+
+    return res.status(200).json({
+      success: true,
+      data: responsePayload,
+      
+    });
+  }
+
+  if (sort === "hot") {
     const page = Number(req.query.page) || 1;
     const skip = (page - 1) * limit;
 
     const comments = await Comment.find({
       postId,
       parentCommentId: null,
+      isDeleted: false,
     })
       .sort({ vote: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .lean()
-      .exec();
+      .lean();
 
-    const enriched = await promise.all(
-      comments.map(async (c) => {
-        const replyCount = await Comment.countDocuments({
-          parentCommentId: c._id,
-        });
-        return { ...comments, replyCount };
-      })
-    );
+    responsePayload = {
+      paginationType: "offset",
+      page,
+      results: comments.length,
+      data: comments,
+    };
 
     return res.status(200).json({
       success: true,
-      data: enriched,
-    });
-
-  } catch (error) {
-    console.error("Error fetching parent comments: ", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while fetching parent comments",
+      data: responsePayload,
     });
   }
-}
+
+  return res.status(400).json({
+    success: false,
+    message: "Invalid sort type",
+  });
+});
+
 
 /**
  * @desc    fetch comments for a post
@@ -120,33 +175,108 @@ export async function getRootComments(req, res) {
  */
 
 export async function getReplies(req, res) {
+  const { commentId } = req.params;
+  const limit = Math.min(Number(req.query.limit) || 20, 50);
+  const cursor = req.query.cursor;
+
+  const session = await mongoose.startSession();
+
   try {
-    const { commentId } = req.params;
+    let responsePayload;
 
-    const replies = await Comment.find({
-      parentcommentId: commentId,
-    }).sort({ vote: -1, createdAt: -1 }).lean();
+    await session.withTransaction(
+      async () => {
+        let matchStage = {
+          parentCommentId: new mongoose.Types.ObjectId(commentId),
+          isDeleted: false,
+        };
 
-    const enriched = await promise.all(
-      replies.map(async (r) => {
-        const replyCount = await Comment.countDocuments({
-          parentCommentId: r._id,
-        });
-        return { ...r, replyCount };
-      })
+        if (cursor) {
+          const cursorDoc = await Comment.findById(cursor)
+            .select("createdAt")
+            .session(session)
+            .lean();
+
+          if (cursorDoc) {
+            matchStage.$or = [
+              { createdAt: { $lt: cursorDoc.createdAt } },
+              {
+                createdAt: cursorDoc.createdAt,
+                _id: { $lt: cursorDoc._id },
+              },
+            ];
+          }
+        }
+
+        const replies = await Comment.aggregate([
+          { $match: matchStage },
+
+          {
+            $lookup: {
+              from: "comments",
+              let: { replyId: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ["$parentCommentId", "$$replyId"] },
+                        { $eq: ["$isDeleted", false] },
+                      ],
+                    },
+                  },
+                },
+                { $count: "count" },
+              ],
+              as: "replyMeta",
+            },
+          },
+
+          {
+            $addFields: {
+              replyCount: {
+                $ifNull: [{ $arrayElemAt: ["$replyMeta.count", 0] }, 0],
+              },
+            },
+          },
+
+          { $project: { replyMeta: 0 } },
+
+          { $sort: { createdAt: -1, _id: -1 } },
+
+          { $limit: limit + 1 },
+        ]).session(session); 
+
+        let nextCursor = null;
+        const hasNextPage = replies.length > limit;
+
+        if (hasNextPage) {
+          nextCursor = replies[limit - 1]._id;
+          replies.pop();
+        }
+
+        responsePayload = {
+          nextCursor,
+          hasNextPage,
+          results: replies.length,
+          data: replies,
+        };
+      },
+      {
+        readConcern: { level: "snapshot" }, 
+        writeConcern: { w: "majority" },
+      }
     );
 
     return res.status(200).json({
-      success: false,
-      data: enriched,
+      success: true,
+      data: responsePayload,
     });
 
   } catch (error) {
-    console.error("Error getting replies: ", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while fetching replies",
-    });
+    throw error;
+  } finally {
+    session.endSession();
   }
 }
 
@@ -157,120 +287,109 @@ export async function getReplies(req, res) {
  */
 
 
-export async function deleteComment(req, res){
-  try{
-    const userId = req.user?._id;
-    const { commentId } = req.params;
+import mongoose from "mongoose";
 
-    const comment = await Comment.findById(commentId).exec();
+export async function deleteComment(req, res) {
+  const session = await mongoose.startSession();
 
-    if(!comment){
-      return res.status(403).json({
-        success: false,
-        message: "Comment not found",
-      });
-    }
+  try {
+    await session.withTransaction(async () => {
 
-    if(comment.isDeleted){
-      return res.status(403).json({
-        success: true,
-        message: "Comment already deleted",
-      });
-    }
+      const userId = req.user?._id;
+      const { commentId } = req.params;
 
-    if(comment.userId.toString() !== userId.toString()){
-      return res.status(400).json({
-        success: false,
-        message: "Invalid User, You are not allowed to delete this comment",
-      });
-    }
+      const comment = await Comment.findById(commentId)
+        .session(session);
 
-    const commentAge = Date.now() - new Date(comment.createdAt).getTime();
-    const ageWithinLimit = commentAge <= (60*1000);
+      if (!comment) {
+        throw new AppError("Comment not found", 404);
+      }
 
-    const hasReplies = await Comment.exists({
-      parentCommentId: comment._id,
-      isDeleted: false,
-    });
+      if (comment.isDeleted) {
+        return res.status(200).json({
+          success: true,
+          message: "Comment already deleted",
+        });
+      }
 
-    const hasVotes = await Vote.exists({
-      targetId: comment._id,
-      targetType: "Comment",
-    })
+      if (comment.userId.toString() !== userId.toString()) {
+        throw new AppError("You are not allowed to delete this comment", 403)
+      }
 
-    const isHardDelete = 
-      ageWithinLimit && !hasReplies && !hasVotes;
+      const commentAge =
+        Date.now() - new Date(comment.createdAt).getTime();
 
-    if(isHardDelete){
-      await Comment.deleteOne({ _id: comment._id });
+      const ageWithinLimit = commentAge <= 60 * 1000;
 
-      await Vote.deleteMany({
+      const hasReplies = await Comment.exists({
+        parentCommentId: comment._id,
+        isDeleted: false,
+      }).session(session);
+
+      const hasVotes = await Vote.exists({
         targetId: comment._id,
         targetType: "Comment",
-      });
+      }).session(session);
 
-      await Post.findByIdAndUpdate(comment.postId, {
-        $inc: { commentCount: -1 },
-      });
+      const isHardDelete =
+        ageWithinLimit && !hasReplies && !hasVotes;
+
+      // ✅ HARD DELETE
+      if (isHardDelete) {
+
+        await Comment.deleteOne({ _id: comment._id })
+          .session(session);
+
+        await Vote.deleteMany({
+          targetId: comment._id,
+          targetType: "Comment",
+        }).session(session);
+
+        await Post.updateOne(
+          { _id: comment.postId },
+          { $inc: { commentCount: -1 } }
+        ).session(session);
+
+        return res.status(200).json({
+          success: true,
+          message: "Comment permanently deleted",
+        });
+      }
+
+      // ✅ SOFT DELETE
+      comment.isDeleted = true;
+      comment.deletedAt = new Date();
+
+      await comment.save({ session });
+
+      await Vote.updateMany(
+        {
+          targetId: comment._id,
+          targetType: "Comment",
+          isDeleted: false,
+        },
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: new Date(),
+          },
+        }
+      ).session(session);
+
+      await Post.updateOne(
+        { _id: comment.postId },
+        { $inc: { commentCount: -1 } }
+      ).session(session);
 
       return res.status(200).json({
         success: true,
-        message: "Comment permanently deleted",
+        message: "Comment soft deleted",
       });
-    }
-
-    comment.isDeleted = true,
-    comment.isDeleted = new Date();
-    await comment.save();
-    
-    await Post.findByIdAndUpdate(comment.postId, {
-      $inc: { commentCount: -1 },
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Comment soft deleted"
-    });
-
-  }catch(error){
-    console.error("Error while deleting Comment: ", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while deleting comment"
-    })
+  } catch (error) {
+    throw error;
+  } finally {
+    session.endSession();
   }
 }
-
-/**
- 
-1. Reddit Hotness Ranking — The Actual Formula
-Reddit uses a ranking formula to sort posts/comments 
-not just by votes or age, but a combination of both:
-hotness = log10(max(votes, 1)) + (createdAt_in_seconds / 45000)
-
-Meaning:
-- Votes push a comment up
-- Age pushes a comment down
-- New comments with a few votes can beat old comments with many votes
-This prevents old comments from staying at the top forever.
-
-Final architecture:
-
-- Load top-level comments only
-parentCommentId = null
-
-- Show reply count for each comment
-countDocuments({ parentCommentId: id })
-
-- When user opens replies, fetch:
-Comment.find({ parentCommentId: id })
-
-- For every reply, also return its own reply count
-
-- Allow further expansion recursively
-
-This is lazy loading + nested comments, 
-and it is the same method used by FAANG because 
-it's the only scalable pattern.
-
- */
