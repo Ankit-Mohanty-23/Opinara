@@ -26,6 +26,11 @@ const commentSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    vote: {
+      type: Number,
+      default: 0,
+      index: true,
+    },    
     isDeleted: {
       type: Boolean,
       default: false,
@@ -34,13 +39,34 @@ const commentSchema = new mongoose.Schema(
     deletedAt: {
       type: Date,
       default: null,
-      index: true,
+      index: true,  
     },
   },
   { timestamps: true }
 );
 
-commentSchema.index({ createdAt: -1 });
-commentSchema.index({ waveId: 1, author: 1 });
+commentSchema.index({
+  postId: 1,
+  parentCommentId: 1,
+  isDeleted: 1,
+  createdAt: -1,
+  _id: -1,
+});
+
+commentSchema.index({
+  postId: 1,
+  parentCommentId: 1,
+  isDeleted: 1,
+  vote: -1,
+  createdAt: -1,
+});
+
+commentSchema.index({
+  parentCommentId: 1,
+  isDeleted: 1,
+  createdAt: -1,
+  _id: -1,
+});
+
 
 export default mongoose.model("Comment", commentSchema);
