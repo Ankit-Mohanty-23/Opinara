@@ -1,3 +1,5 @@
+import logger from "../util/logger.js"
+
 export const validate = (schema) => (req, res, next) => {
   try {
     if (schema.body) {
@@ -34,7 +36,7 @@ export const validate = (schema) => (req, res, next) => {
     }
     next();
   } catch (err) {
-    console.log("Validation Error: ", err);
+    logger.log("Validation Error: ", err);
     return res.status(500).json({
       success: false,
       msg: "Failed to Validate created Post",
