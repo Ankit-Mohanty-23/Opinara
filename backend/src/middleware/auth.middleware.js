@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import Users from "../models/user.model.js";
+import logger from "../util/logger.js";
 
 export default async function auth(req, res, next) {
   try {
@@ -36,7 +37,7 @@ export default async function auth(req, res, next) {
     req.user = currentUser;
     next();
   } catch (error) {
-    console.error("AUTH MIDDLEWARE ERROR:", error);
+    logger.error("AUTH MIDDLEWARE ERROR:", error);
 
     let message = "Invalid token. Please log in again.";
     if (error.name === "TokenExpiredError") {
