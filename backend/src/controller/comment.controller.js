@@ -286,9 +286,6 @@ export async function getReplies(req, res) {
  * @access  private
  */
 
-
-import mongoose from "mongoose";
-
 export async function deleteComment(req, res) {
   const session = await mongoose.startSession();
 
