@@ -75,7 +75,7 @@ export const getLocationSchema = {
  * Get User Waves
  * /waves/user-wave?page=1&limit=10
  */
-export const getWaves = {
+export const getWavesSchema = {
     user: z.object({
         _id: objectIdSchema,
     }),
@@ -90,7 +90,7 @@ export const getWaves = {
  * Search Waves
  * /waves/search?q=react
  */
-export const SearchWave = {
+export const SearchWaveSchema = {
     query: z.object({
         q: z
             .string()
@@ -106,7 +106,7 @@ export const SearchWave = {
 /**
  * Delete Wave
  */
-export const deleteWave = {
+export const deleteWaveSchema = {
     params: z.object({
         waveId: objectIdSchema,
     }),
@@ -120,7 +120,7 @@ export const deleteWave = {
  * Get Members
  * /waves/:waveId/members?page=1&limit=20&role=moderator&status=active&search=ankit
  */
-export const getMembers = {
+export const getMembersSchema = {
     params: z.object({
         waveId: objectIdSchema,
     }),
