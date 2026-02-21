@@ -10,11 +10,12 @@ import logger from "../util/logger.js";
 
 /**
  * @desc    Create new post
- * @route   POST /:waveId/create-post
+ * @route   POST /posts/:waveId/create
  * @access  Private
  */
 
 export const createPost = asyncHandler(async (req, res) => {
+
   const { title, content } = req.body;
   const userId = req.user?._id;
   const { waveId } = req.params;
@@ -22,48 +23,82 @@ export const createPost = asyncHandler(async (req, res) => {
   let media = [];
 
   if (req.files && req.files.length > 0) {
-    media = req.files.map((file) => ({
+    media = req.files.map(file => ({
       url: file.path,
       type: file.mimetype.startsWith("video") ? "video" : "image",
       public_id: file.filename || file.public_id,
     }));
   }
 
-  const session = await mongoose.startSession()
+  const session = await mongoose.startSession();
 
-  try{
-    session.startTransaction();
+  try {
 
-    const [post] = await Post.create(
-      [
-        {
+    let createdPost;
+
+    await session.withTransaction(async () => {
+
+      // Check wave
+      const wave = await Wave.findOne({
+        _id: waveId,
+        isDeleted: false
+      }).session(session);
+
+      if (!wave)
+        throw new AppError("Wave not found", 404);
+
+      // Check membership
+      const membership = await Membership.findOne({
+        waveId,
+        userId,
+        status: "active"
+      }).session(session);
+
+      if (!membership)
+        throw new AppError(
+          "You are not an active member of this wave",
+          403
+        );
+
+      // Create post
+      const [post] = await Post.create(
+        [{
           userId,
           waveId,
           title,
           content,
-          media,
-        },
-      ],
-      { session }
-    );
+          media
+        }],
+        { session }
+      );
 
-    await session.commitTransaction();
+      createdPost = post;
+
+      // Increment post count
+      await Wave.updateOne(
+        { _id: waveId },
+        { $inc: { postCount: 1 } },
+        { session }
+      );
+
+    });
 
     return res.status(201).json({
       success: true,
-      data: post,
+      data: createdPost
     });
 
-  }catch(error){
-    await session.abortTransaction();
+  } catch (error) {
 
-    for(const item of media){
-      if(item.public_id){
-        try{
+    // Cloudinary rollback
+    for (const item of media) {
+      if (item.public_id) {
+        try {
           await cloudinary.uploader.destroy(item.public_id, {
-            resource_type: item.type === "video" ? "video" : "image",
+            resource_type:
+              item.type === "video" ? "video" : "image"
           });
-        }catch(cleanupError){
+        } catch (cleanupError) {
           logger.error({
             message: "Cloudinary rollback failed",
             publicId: item.public_id,
@@ -71,12 +106,14 @@ export const createPost = asyncHandler(async (req, res) => {
           });
         }
       }
-    }    
+    }
 
     throw error;
+
   } finally {
     session.endSession();
   }
+
 });
 
 /**
