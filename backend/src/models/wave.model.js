@@ -44,26 +44,17 @@ const waveSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
+    postCount: {
+      type: Number,
+      default: 0,
+    },
     location: {
       type: {
         type: String,
-        enum: ["Point"],
       },
       coordinates: {
         type: [Number],
-        validate: {
-          validator: function (v) {
-            // For Point type, coordinates must be [longitude, latitude]
-            return (
-              Array.isArray(v) &&
-              v.length === 2 &&
-              v[0] >= -180 && v[0] <= 180 &&
-              v[1] >= -90 && v[1] <= 90
-            );
-          },
-          message:
-            "Coordinates must be [longitude, latitude]",
-        },
+        default: null,
       },
     },
     isDeleted: {
@@ -74,10 +65,6 @@ const waveSchema = new mongoose.Schema(
     deletedAt: {
       type: Date,
       default: null,
-    },
-    postCount: {
-      type: Number,
-      default: 0,
     },
   },
   {
