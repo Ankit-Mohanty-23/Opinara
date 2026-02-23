@@ -7,9 +7,11 @@ import {
   SearchWave,
   deleteWave,
   getMembers,
+  updateWaveCoverImage,
 } from "../controller/wave.controller.js";
 import {
   createWaveSchema,
+  CoverImageSchema,
   getWavePostSchema,
   getLocationSchema,
   getWavesSchema,
@@ -19,11 +21,21 @@ import {
 } from "../validation/wave.validation.js";
 import auth from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.middleware.js";
+import upload from "../middleware/upload.middleware.js";
 
 const Router = express.Router();
 
 // Create wave
 Router.post("/create", auth, validate(createWaveSchema), createWave);
+
+// update Wave Cover Image
+Router.post(
+  "/coverpic",
+  auth,
+  upload.single("media"),
+  validate(CoverImageSchema),
+  updateWaveCoverImage,
+);
 
 // Get posts of a wave
 // Example: /waves/123/posts?page=1
