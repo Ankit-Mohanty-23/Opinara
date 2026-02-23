@@ -1,0 +1,26 @@
+# Ignore node modules (will be installed inside container)
+node_modules
+
+# Ignore environment files (optional, if using --env-file)
+.env
+.env.local
+.env.development
+
+# Ignore unnecessary folders
+Llama-setup
+load-testing
+logs
+
+# Ignore git and docs
+.git
+.gitignore
+README.md
+ZPlan.md
+
+# Ignore Docker files themselves
+Dockerfile
+.dockerignore
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
