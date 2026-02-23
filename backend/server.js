@@ -6,7 +6,7 @@ import logger from "./src/util/logger.js";
 dotenv.config();
 
 const PORT = process.env.PORT;
-const MONGO_URL = process.env.MONGO_URL;
+const MONGO_URL = process.env.MONGO_URI;
 
 (async () => {
   try {
