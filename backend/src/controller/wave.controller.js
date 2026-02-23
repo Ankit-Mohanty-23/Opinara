@@ -4,10 +4,9 @@ import Membership from "../models/membership.model.js";
 import Post from "../models/post.model.js";
 import User from "../models/user.model.js";
 import { v2 as cloudinary } from "cloudinary";
-import { summarize } from "../../Llama-setup/summarizer.js";
 import AppError from "../util/AppError.js";
 import { asyncHandler } from "../util/asyncHandler.js";
-import logger from "../util/logger.js";
+//import { summarize } from "../../Llama-setup/summarizer.js";
 
 /**
  * @desc    Create new wave
@@ -59,6 +58,92 @@ export const createWave = asyncHandler(async (req, res) => {
     session.endSession();
     throw error;
   }
+});
+
+/**
+ * @desc    Update wave cover image
+ * @route   PUT /waves/:waveId/cover-image
+ * @access  Private (Owner only)
+ */
+
+export const updateWaveCoverImage = asyncHandler(async (req, res) => {
+
+  const userId = req.user?._id;
+  const { waveId } = req.params;
+
+  let coverImage = null;
+
+  if (req.file) {
+    coverImage = {
+      url: req.file.path,
+      public_id: req.file.filename || req.file.public_id,
+    };
+  }
+
+  if (!coverImage)
+    throw new AppError("Cover image is required", 400);
+
+  const session = await mongoose.startSession();
+
+  try {
+
+    let updatedCoverImage;
+
+    await session.withTransaction(async () => {
+
+      const wave = await Wave.findOne({
+        _id: waveId,
+        isDeleted: false
+      }).session(session);
+
+      if (!wave)
+        throw new AppError("Wave not found", 404);
+
+      if (wave.owner.toString() !== userId.toString())
+        throw new AppError(
+          "Only owner can update cover image",
+          403
+        );
+
+      if (wave.coverImage?.public_id) {
+        await cloudinary.uploader.destroy(
+          wave.coverImage.public_id
+        );
+      }
+
+      wave.coverImage = coverImage;
+      await wave.save({ session });
+      updatedCoverImage = wave.coverImage;
+
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: updatedCoverImage
+    });
+
+  } catch (error) {
+
+    if (coverImage?.public_id) {
+      try {
+        await cloudinary.uploader.destroy(
+          coverImage.public_id
+        );
+      } catch (cleanupError) {
+        logger.error({
+          message: "Cloudinary rollback failed",
+          publicId: coverImage.public_id,
+          error: cleanupError.message,
+        });
+      }
+    }
+
+    throw error;
+
+  } finally {
+    session.endSession();
+  }
+
 });
 
 /**
